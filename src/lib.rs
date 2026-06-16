@@ -57,17 +57,17 @@ fn c_scheme_allowed(c: u8, is_first_char: bool) -> bool {
     }
 }
 
-pub fn parse(bytes: &[u8]) -> Url<'_> {
+pub fn parse(bytes: &[u8]) -> UrlIndexed {
     let mut idx = 0;
-    let mut scheme = None::<&[u8]>;
+    let mut scheme = None::<Rdx>;
     while idx < bytes.len() {
         let c = bytes[idx];
         if c == b':' {
             if bytes[idx + 1..].starts_with(b"//") {
                 // found a scheme
-                let s = &bytes[..idx];
-                scheme = Some(s);
+                let s = Rdx::new(0, idx);
                 if s.len() == 0 { panic!(); }
+                scheme = Some(s);
                 idx += 3;
             }
             break;
@@ -88,20 +88,20 @@ pub fn parse(bytes: &[u8]) -> Url<'_> {
     // todo: userinfo
     let authority_start = idx;
     let mut has_port = false;
-    let mut host: &[u8] = &[];
+    let mut host = Rdx::new(0,0);
     while idx < bytes.len() {
         let c = bytes[idx];
         if c == b':' {
             has_port = true;
-            host = &bytes[authority_start..idx];
+            host = Rdx::new(authority_start, idx);
             break;
         }
         if c == b'/' || c == b'?' || c == b'#' {
-            host = &bytes[authority_start..idx];
+            host = Rdx::new(authority_start, idx);
             break;
         }
         if idx + 1 == bytes.len(){
-            host = &bytes[authority_start..];
+            host = Rdx::new(authority_start, idx + 1);
             break;
         }
         if !c_reserved(c) && !c_unreserved(c) && c != b'%' {
@@ -136,16 +136,16 @@ pub fn parse(bytes: &[u8]) -> Url<'_> {
     }
 
     let path_start = idx;
-    let mut path: &[u8] = &[];
+    let mut path = Rdx::new(0,0);
     while idx < bytes.len() {
         let c = bytes[idx];
         if c == b'?' || c == b'#' {
-            path = &bytes[path_start..idx];
+            path = Rdx::new(path_start, idx);
             break;
         }
         if idx + 1 == bytes.len() {
-            path = &bytes[path_start..];
             idx += 1;
+            path = Rdx::new(path_start, idx);
             break;
         }
         if !c_reserved(c) && !c_unreserved(c) && c != b'%' {
@@ -154,25 +154,25 @@ pub fn parse(bytes: &[u8]) -> Url<'_> {
         idx += 1;
     }
 
-    let mut query = None::<&[u8]>;
+    let mut query = None::<Rdx>;
     if idx < bytes.len() && bytes[idx] == b'?' {
         idx += 1;
         let qs_start = idx;
         while idx < bytes.len() {
             if idx + 1 == bytes.len() {
-                query = Some(&bytes[qs_start..]);
                 idx += 1;
+                query = Some(Rdx::new(qs_start, idx));
                 break;
             }
             if bytes[idx] == b'#' {
-                query = Some(&bytes[qs_start..idx]);
+                query = Some(Rdx::new(qs_start, idx));
                 break;
             } 
             idx += 1;
         }
     }
     
-    let mut fragment = None::<&[u8]>;
+    let mut fragment = None::<Rdx>;
     if idx < bytes.len() && bytes[idx] == b'#' {
         idx += 1;
         let frag_start = idx;
@@ -183,10 +183,10 @@ pub fn parse(bytes: &[u8]) -> Url<'_> {
             }
             idx += 1;
         }
-        fragment = Some(&bytes[frag_start..]);
+        fragment = Some(Rdx::new(frag_start, idx));
     }
 
-    Url {
+    UrlIndexed {
         scheme,
         host: Some(host),
         port,
@@ -196,39 +196,40 @@ pub fn parse(bytes: &[u8]) -> Url<'_> {
     }
 }
 
-struct Rdx {
+// todo: this is not meant to be pub
+pub struct Rdx {
     from: usize,
     to: usize
 }
 impl Rdx {
-    fn new(from: usize, to: usize) -> Self {
+    pub fn new(from: usize, to: usize) -> Self {
         assert!(from <= to);
         Self {
             from,
             to
         }
     }
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.to - self.from
     }
-    fn as_slice_of<'a>(&self, bytes: &'a [u8]) -> &'a [u8] {
+    pub fn as_slice_of<'a>(&self, bytes: &'a [u8]) -> &'a [u8] {
         &bytes[self.from..self.to]
     }
-    fn translate(&mut self, offset: usize) -> &mut Self {
+    pub fn translate(&mut self, offset: usize) -> &mut Self {
         self.from += offset;
         self.to += offset;
         self
     }
 }
 
-// pub struct UrlIndexed {
-//     scheme: Option<Scheme>,
-//     host: Rdx,
-//     port: Option<u16>,
-//     path: Rdx,
-//     query: Option<Rdx>,
-//     fragment: Option<Rdx>
-// }
+pub struct UrlIndexed {
+    pub scheme: Option<Rdx>,
+    pub host: Option<Rdx>,
+    pub port: Option<u16>,
+    pub path: Rdx,
+    pub query: Option<Rdx>,
+    pub fragment: Option<Rdx>
+}
 
 pub struct Url<'a> {
     pub scheme: Option<&'a [u8]>,
