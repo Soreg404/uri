@@ -1,5 +1,6 @@
 use crate::uri_byte_classes::UriByte;
 
+#[derive(Debug)]
 pub enum CodecError<'src, 'dest> {
     BufferTooSmall(usize),
     InvalidSequence {
@@ -31,25 +32,29 @@ pub fn decode<'src, 'dest>(
     while i < bytes.len() {
         // todo: lifetimes not happy
         //
-        // let b = decode_next_byte(
-        //     bytes,
-        //     &mut i,
-        //     dest_buffer,
-        //     dest_head,
-        //     catch_invalid_sequences,
-        //     catch_uri_unsafe_bytes
-        // )?;
-        let b = Some(b'a');
-        if !buffer_too_small {
-            if dest_head == dest_buffer.len() {
-                buffer_too_small = true;
-            } else {
-                if let Some(b) = b {
-                    dest_buffer[dest_head] = b;
-                    dest_head += 1;
+        match decode_next_byte(
+            bytes,
+            &mut i,
+            dest_buffer,
+            dest_head,
+            catch_invalid_sequences,
+            catch_uri_unsafe_bytes
+        ) {
+            Ok(b) => {
+                if !buffer_too_small {
+                    if dest_head == dest_buffer.len() {
+                        buffer_too_small = true;
+                    } else {
+                        if let Some(b) = b {
+                            dest_buffer[dest_head] = b;
+                            dest_head += 1;
+                        }
+                    }
                 }
-            }
-        }
+            },
+            Err(e) => return Err(e)
+        };
+
     }
     if buffer_too_small {
         Err(CodecError::BufferTooSmall(dest_head))
