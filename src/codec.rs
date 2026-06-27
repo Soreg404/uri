@@ -22,40 +22,47 @@ pub enum CodecError<'src, 'dest> {
 pub fn decode<'src, 'dest>(
     bytes: &'src [u8],
     dest_buffer: &'dest mut [u8],
-    catch_invalid_sequences: bool,
-    catch_uri_unsafe_bytes: bool
+    _catch_invalid_sequences: bool,
+    _catch_uri_unsafe_bytes: bool
 )
 -> Result<&'dest [u8], CodecError<'src, 'dest>> {
+    #![deny(unused)]
+    #![allow(unused_mut)]
     let mut buffer_too_small = false;
     let mut dest_head = 0usize;
     let mut i = 0;
     while i < bytes.len() {
-        // todo: lifetimes not happy
-        //
+
         match decode_next_byte(
             bytes,
             &mut i,
             dest_buffer,
             dest_head,
-            catch_invalid_sequences,
-            catch_uri_unsafe_bytes
+            false, false
         ) {
-            Ok(b) => {
-                if !buffer_too_small {
-                    if dest_head == dest_buffer.len() {
-                        buffer_too_small = true;
-                    } else {
-                        if let Some(b) = b {
-                            dest_buffer[dest_head] = b;
-                            dest_head += 1;
-                        }
-                    }
-                }
+            Err(_e) => {
+                return Err(CodecError::UnsafeByte {
+                    decoded: dest_buffer,
+                    error_index: 0,
+                    rest: bytes
+                });
             },
-            Err(e) => return Err(e)
+            _ => {}
         };
+        dest_buffer[0] = 0;
 
+        /*if !buffer_too_small {
+            if dest_head == dest_buffer.len() {
+                buffer_too_small = true;
+            } else {
+                if let Some(b) = b {
+                    dest_buffer[dest_head] = b;
+                    dest_head += 1;
+                }
+            }
+        }*/
     }
+
     if buffer_too_small {
         Err(CodecError::BufferTooSmall(dest_head))
     } else {
@@ -118,7 +125,7 @@ fn decode_next_byte<'decode, 'src, 'dest>(
         if invalid_sequence && catch_uri_unsafe_bytes {
             let error_length = std::cmp::min(src.len() - *src_i, 3);
             return Err(CodecError::InvalidSequence {
-                decoded: &dest[..dest_head],
+                decoded: dest,
                 error_index: *src_i,
                 error_length,
                 rest: &src[*src_i + error_length..] 
@@ -128,7 +135,7 @@ fn decode_next_byte<'decode, 'src, 'dest>(
     } else {
         if !src[*src_i].is_uri_unreserved() && catch_uri_unsafe_bytes {
             return Err(CodecError::UnsafeByte {
-                decoded: &dest[..dest_head],
+                decoded: dest,
                 error_index: *src_i,
                 rest: &src[*src_i + 1..] 
             });
