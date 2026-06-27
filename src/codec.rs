@@ -187,18 +187,18 @@ mod tests {
     #[test]
     fn decode() {
         let mut buf = [0u8; 20];
-        assert_eq!(url_decode(b"hello%20world", &mut buf), Ok(b"hello world".as_slice()));
-        assert_eq!(url_decode(b"123456789%20123456789%20XYZ", &mut buf), Err(23));
+        assert_eq!(decode(b"hello%20world", &mut buf), Ok(b"hello world".as_slice()));
+        assert_eq!(decode(b"123456789%20123456789%20XYZ", &mut buf), Err(23));
         assert_eq!(&buf[0..20], b"123456789 123456789 ");
-        assert_eq!(url_decode(b"%20%20%20", &mut buf), Ok(b"   ".as_slice()));
-        assert_eq!(url_decode(b"a+b+c", &mut buf), Ok(b"a b c".as_slice()));
+        assert_eq!(decode(b"%20%20%20", &mut buf), Ok(b"   ".as_slice()));
+        assert_eq!(decode(b"a+b+c", &mut buf), Ok(b"a b c".as_slice()));
 
         let mut v = Vec::new();
-        assert_eq!(url_decode_to_vec(b"hello%20world", &mut v), b"hello world");
-        assert_eq!(url_decode_to_vec(b"123456789%20123456789%20XYZ", &mut v),
+        assert_eq!(decode_to_vec(b"hello%20world", &mut v), b"hello world");
+        assert_eq!(decode_to_vec(b"123456789%20123456789%20XYZ", &mut v),
         b"123456789 123456789 XYZ");
-        assert_eq!(url_decode_to_vec(b"%20%20%20", &mut v), b"   ");
-        assert_eq!(url_decode_to_vec(b"cze%C5%9B%C4%87", &mut v), "cześć".as_bytes());
-        assert_eq!(url_decode_to_vec(b"%22", &mut v), b"\"");
+        assert_eq!(decode_to_vec(b"%20%20%20", &mut v), b"   ");
+        assert_eq!(decode_to_vec(b"cze%C5%9B%C4%87", &mut v), "cześć".as_bytes());
+        assert_eq!(decode_to_vec(b"%22", &mut v), b"\"");
     }
 }
