@@ -32,10 +32,9 @@
  */
 
 mod uri_byte_classes;
-pub mod codec;
-
 pub use uri_byte_classes::UriByte;
 
+pub mod codec;
 
 pub fn parse(bytes: &[u8]) -> UrlIndexed {
     let mut idx = 0;
@@ -185,8 +184,7 @@ pub fn parse(bytes: &[u8]) -> UrlIndexed {
     }
 }
 
-// todo: this is not meant to be pub
-pub struct Rdx {
+struct Rdx {
     from: usize,
     to: usize
 }
