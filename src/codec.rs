@@ -1,19 +1,19 @@
 use crate::uri_byte_classes::UriByte;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum CodecError<'src, 'dest> {
     BufferTooSmall(usize),
+    UnsafeByte {
+        decoded: &'dest [u8],
+        error_index: usize,
+        rest: &'src [u8]
+    },
     InvalidSequence {
         decoded: &'dest [u8],
         error_index: usize,
         error_length: usize,
         rest: &'src [u8]
     },
-    UnsafeByte {
-        decoded: &'dest [u8],
-        error_index: usize,
-        rest: &'src [u8]
-    }
 }
 
 /*
@@ -22,45 +22,56 @@ pub enum CodecError<'src, 'dest> {
 pub fn decode<'src, 'dest>(
     bytes: &'src [u8],
     dest_buffer: &'dest mut [u8],
-    _catch_invalid_sequences: bool,
-    _catch_uri_unsafe_bytes: bool
+    catch_invalid_sequences: bool,
+    catch_uri_unsafe_bytes: bool
 )
 -> Result<&'dest [u8], CodecError<'src, 'dest>> {
-    #![deny(unused)]
-    #![allow(unused_mut)]
     let mut buffer_too_small = false;
     let mut dest_head = 0usize;
     let mut i = 0;
     while i < bytes.len() {
-
-        match decode_next_byte(
-            bytes,
-            &mut i,
-            dest_buffer,
-            dest_head,
-            false, false
-        ) {
-            Err(_e) => {
-                return Err(CodecError::UnsafeByte {
-                    decoded: dest_buffer,
-                    error_index: 0,
-                    rest: bytes
-                });
-            },
-            _ => {}
+        let b = match decode_next_byte(&bytes[i..]) {
+            DNBResult::Byte(b) => {
+                i += 1;
+                b
+            }
+            DNBResult::UnsafeByte(b) => {
+                if !buffer_too_small && catch_uri_unsafe_bytes {
+                    return Err(CodecError::UnsafeByte {
+                        decoded: &dest_buffer[..dest_head],
+                        error_index: i,
+                        rest: &bytes[i + 1 ..]
+                    });
+                }
+                i += 1;
+                b
+            }
+            DNBResult::Sequence(b) => {
+                i += 3;
+                b
+            }
+            DNBResult::InvalidSequence(len) => {
+                if !buffer_too_small && catch_invalid_sequences {
+                    return Err(CodecError::InvalidSequence {
+                        decoded: &dest_buffer[..dest_head],
+                        error_index: i,
+                        error_length: len,
+                        rest: &bytes[i + len ..]
+                    });
+                }
+                i += len;
+                continue;
+            }
         };
-        dest_buffer[0] = 0;
 
-        /*if !buffer_too_small {
+        if !buffer_too_small {
             if dest_head == dest_buffer.len() {
                 buffer_too_small = true;
             } else {
-                if let Some(b) = b {
-                    dest_buffer[dest_head] = b;
-                    dest_head += 1;
-                }
+                dest_buffer[dest_head] = b;
             }
-        }*/
+        }
+        dest_head += 1;
     }
 
     if buffer_too_small {
@@ -80,72 +91,77 @@ pub fn decode_to_vec<'src, 'dest>(
     let dest_start = dest.len();
     let mut i = 0;
     while i < bytes.len() {
-        // todo: lifetimes not happy
-        //
-        // let b = decode_next_byte(
-        //     bytes,
-        //     &mut i,
-        //     &dest[dest_start..],
-        //     dest.len() - dest_start,
-        //     catch_invalid_sequences,
-        //     catch_uri_unsafe_bytes
-        // )?;
-        let b = Some(b'a');
-        if let Some(b) = b {
-            dest.push(b);
-        }
+        let b = match decode_next_byte(&bytes[i..]) {
+            DNBResult::Byte(b) => {
+                i += 1;
+                b
+            }
+            DNBResult::UnsafeByte(b) => {
+                if catch_uri_unsafe_bytes {
+                    return Err(CodecError::UnsafeByte {
+                        decoded: &dest[dest_start..],
+                        error_index: i,
+                        rest: &bytes[i + 1 ..]
+                    });
+                }
+                i += 1;
+                b
+            }
+            DNBResult::Sequence(b) => {
+                i += 3;
+                b
+            }
+            DNBResult::InvalidSequence(len) => {
+                if catch_invalid_sequences {
+                    return Err(CodecError::InvalidSequence {
+                        decoded: &dest[dest_start..],
+                        error_index: i,
+                        error_length: len,
+                        rest: &bytes[i + len ..]
+                    });
+                }
+                i += len;
+                continue;
+            }
+        };
+
+        dest.push(b);
     }
     Ok(&dest[dest_start..])
 }
 
-fn decode_next_byte<'decode, 'src, 'dest>(
-    src: &'src [u8],
-    src_i: &'decode mut usize,
-    dest: &'dest [u8],
-    dest_head: usize,
-    catch_invalid_sequences: bool,
-    catch_uri_unsafe_bytes: bool
-) -> Result<Option<u8>, CodecError<'src, 'dest>> {
-    if src[*src_i] == b'+' {
-        *src_i += 1;
-        return Ok(Some(b' '));
-    } else if src[*src_i] == b'%' {
-        let mut invalid_sequence = false;
-        if *src_i + 2 >= src.len() {
-            invalid_sequence = true;
-        } else {
-            match hex(src[*src_i + 1], src[*src_i + 2]) {
-                None => invalid_sequence = true,
-                Some(v) => {
-                    *src_i += 3;
-                    return Ok(Some(v));
+enum DNBResult {
+    Byte(u8),
+    UnsafeByte(u8),
+    Sequence(u8),
+    InvalidSequence(usize),
+}
+fn decode_next_byte(src: &[u8]) -> DNBResult {
+    use DNBResult::*;
+    match src.first() {
+        None => panic!("tbd error message"),
+        Some(b'+') => Byte(b' '),
+        Some(b'%') => {
+            if src.len() < 3 {
+                InvalidSequence(src.len())
+            } else {
+                match hex(src[1], src[2]) {
+                    None => InvalidSequence(3),
+                    Some(v) => Sequence(v)
                 }
             }
+        },
+        Some(b) => {
+            if b.is_uri_unreserved() {
+                Byte(*b)
+            } else {
+                UnsafeByte(*b)
+            }
         }
-        if invalid_sequence && catch_uri_unsafe_bytes {
-            let error_length = std::cmp::min(src.len() - *src_i, 3);
-            return Err(CodecError::InvalidSequence {
-                decoded: dest,
-                error_index: *src_i,
-                error_length,
-                rest: &src[*src_i + error_length..] 
-            });
-        }
-        Ok(None)
-    } else {
-        if !src[*src_i].is_uri_unreserved() && catch_uri_unsafe_bytes {
-            return Err(CodecError::UnsafeByte {
-                decoded: dest,
-                error_index: *src_i,
-                rest: &src[*src_i + 1..] 
-            });
-        }
-        let tmp_src_i = *src_i;
-        *src_i += 1;
-        Ok(Some(src[tmp_src_i]))
     }
 }
 
+#[expect(unused)]
 pub fn encode(bytes: &[u8], dest_buffer: &mut [u8]) -> Result<usize, usize> {
     let mut buffer_too_small = false;
     let mut buf_head = 0usize;
@@ -159,6 +175,7 @@ pub fn encode(bytes: &[u8], dest_buffer: &mut [u8]) -> Result<usize, usize> {
     todo!()
 }
 
+#[expect(unused)]
 pub fn encode_to_vec(bytes: &[u8]) -> Vec<u8> {
     todo!()
 }
@@ -191,21 +208,107 @@ mod tests {
         assert_eq!(hex(b'z', b'1'), None);
     }
 
-    #[test]
-    fn decode() {
-        let mut buf = [0u8; 20];
-        assert_eq!(decode(b"hello%20world", &mut buf), Ok(b"hello world".as_slice()));
-        assert_eq!(decode(b"123456789%20123456789%20XYZ", &mut buf), Err(23));
-        assert_eq!(&buf[0..20], b"123456789 123456789 ");
-        assert_eq!(decode(b"%20%20%20", &mut buf), Ok(b"   ".as_slice()));
-        assert_eq!(decode(b"a+b+c", &mut buf), Ok(b"a b c".as_slice()));
+    mod decode {
+        use crate::codec::*;
 
-        let mut v = Vec::new();
-        assert_eq!(decode_to_vec(b"hello%20world", &mut v), b"hello world");
-        assert_eq!(decode_to_vec(b"123456789%20123456789%20XYZ", &mut v),
-        b"123456789 123456789 XYZ");
-        assert_eq!(decode_to_vec(b"%20%20%20", &mut v), b"   ");
-        assert_eq!(decode_to_vec(b"cze%C5%9B%C4%87", &mut v), "cześć".as_bytes());
-        assert_eq!(decode_to_vec(b"%22", &mut v), b"\"");
+        fn simple_comp(from: &[u8], to: &[u8]) {
+            let mut arr_buffer = [0u8; 20];
+            assert!(from.len() <= 20);
+
+            let r = decode(from, &mut arr_buffer, false, false);
+            assert_eq!(r, Ok(to));
+            assert!(arr_buffer.starts_with(to));
+
+            let mut vec_buffer = Vec::<u8>::new();
+            let r = decode_to_vec(from, &mut vec_buffer, false, false);
+            assert_eq!(r, Ok(to));
+            assert_eq!(vec_buffer.as_slice(), to);
+        }
+
+        #[test]
+        fn basic_usage() {
+            simple_comp(b"+", b" ");
+            simple_comp(b"1+2+3", b"1 2 3");
+            simple_comp(b"+1+", b" 1 ");
+            simple_comp(b"+++1+++1+++", b"   1   1   ");
+
+            simple_comp(b"%20", b" ");
+            simple_comp(b"1%202%203", b"1 2 3");
+            simple_comp(b"%e7%8c%ab", b"\xe7\x8c\xab");
+        }
+
+        #[test]
+        fn catch_unsafe_byte() {
+            let mut buf = [0u8; 20];
+            let r = decode(b"123\r45", &mut buf, true, true).unwrap_err();
+            assert_eq!(r, CodecError::UnsafeByte {
+                decoded: b"123",
+                error_index: 3,
+                rest: b"45"
+            });
+
+            let r = decode(b"123 45", &mut buf, true, true).unwrap_err();
+            assert_eq!(r, CodecError::UnsafeByte {
+                decoded: b"123",
+                error_index: 3,
+                rest: b"45"
+            });
+        }
+
+        #[test]
+        fn catch_invalid_sequence() {
+            let mut buf = [0u8; 20];
+            let sample = b"123_%20_%xx_45_%x";
+            let r = decode(sample, &mut buf, true, true).unwrap_err();
+            assert_eq!(r, CodecError::InvalidSequence {
+                decoded: b"123_ _",
+                error_index: 8,
+                error_length: 3,
+                rest: &sample[11..]
+            });
+
+            let sample = &sample[11..];
+            let r = decode(sample, &mut buf[6..], true, true).unwrap_err();
+            assert_eq!(r, CodecError::InvalidSequence {
+                decoded: b"_45_",
+                error_index: 4,
+                error_length: 2,
+                rest: &sample[sample.len()..]
+            });
+        }
+
+        #[test]
+        fn edge_case_buffer_too_small() {
+            assert_eq!(
+                decode(b"1", &mut [], false, false),
+                Err(CodecError::BufferTooSmall(1))
+            );
+
+            // simple cutoff
+            let mut buf = [0u8; 2];
+            assert_eq!(
+                decode(b"12345", &mut buf, false, false),
+                Err(CodecError::BufferTooSmall(5))
+            );
+            assert_eq!(buf.as_slice(), b"12");
+        }
+
+        #[test] 
+        fn edge_case_buffer_too_small_combined_with_other_error() {
+            let mut buf = [0u8; 2];
+            assert_eq!(
+                decode(b"123%xx45", &mut buf, true, true),
+                Err(CodecError::BufferTooSmall(5))
+            );
+            assert_eq!(buf.as_slice(), b"12");
+
+
+            let mut buf = [0u8; 2];
+            assert_eq!(
+                decode(b"123\r45", &mut buf, true, true),
+                Err(CodecError::BufferTooSmall(6))
+            );
+            assert_eq!(buf.as_slice(), b"12");
+        }
     }
 }
