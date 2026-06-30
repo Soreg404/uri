@@ -229,6 +229,7 @@ pub struct Url<'a> {
     pub fragment: Option<&'a [u8]>
 }
 
+#[expect(unused)]
 struct PathIter {
 
 }
