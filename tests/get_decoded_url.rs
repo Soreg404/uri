@@ -2,7 +2,7 @@ use std::boxed::Box;
 
 #[test]
 fn get_decoded_target() {
-    let target = b"/part1/part2+space/part3///";
+    let target = b"/part1/part2+space/part3///part4--%25";
     let mut decoded_strings_buffer = unsafe { Box::<[u8]>::new_uninit_slice(0x4000).assume_init() };
     let mut target_parts_vec_buffer = unsafe { Box::<[usize]>::new_uninit_slice(0x400).assume_init() };
 
@@ -31,8 +31,11 @@ fn explode_target(
 ) -> usize {
     let mut part_num = 0;
     let mut i = 0;
-    let mut p_start = 0;
+    let mut p_start;
     let mut b_buf_head = 0;
+
+    let mut decode_buffer = unsafe { Box::<[u8]>::new_uninit_slice(0x400).assume_init() };
+
     while i < target.len() {
         while i < target.len() && target[i] == b'/' {
             i += 1;
@@ -47,6 +50,10 @@ fn explode_target(
             break;
         }
         let c_part = &target[p_start..i];
+
+        let c_part = url::codec::decode(c_part, &mut decode_buffer, false, false);
+        let c_part = c_part.unwrap();
+
         b_buf[b_buf_head..b_buf_head + c_part.len()].copy_from_slice(c_part);
         b_buf_head += c_part.len();
         p_buf[part_num] = c_part.len();
