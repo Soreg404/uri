@@ -1,23 +1,35 @@
-
-
 mod uri_byte_classes;
 pub use uri_byte_classes::UriByte;
 
 mod parser;
-pub use parser::ParseError;
 
 pub mod codec;
 
-mod cacheable {
-    pub use super::parser::FromTo;
-
-    pub struct UrlCacheable {
-        pub scheme: Option<FromTo>,
-        pub host: Option<FromTo>,
-        pub port: Option<u16>,
-        pub path: FromTo,
-        pub query: Option<FromTo>,
-        pub fragment: Option<FromTo>
+#[derive(Default)]
+struct FromTo {
+    pub from: usize,
+    pub to: usize
+}
+#[derive(Default)]
+struct UrlCacheable {
+    scheme: Option<FromTo>,
+    host: Option<FromTo>,
+    port: Option<u16>,
+    path: FromTo,
+    query: Option<FromTo>,
+    fragment: Option<FromTo>
+}
+impl UrlCacheable {
+    pub fn as_url<'a, 'b>(&'a self, original_bytes: &'b [u8]) -> Url<'b> {
+        let b = original_bytes;
+        Url {
+            scheme: self.scheme.as_ref().map(|v| &b[v.from..v.to]),
+            host: self.host.as_ref().map(|v| &b[v.from..v.to]),
+            port: self.port,
+            path: &b[self.path.from..self.path.to],
+            query: self.query.as_ref().map(|v| &b[v.from..v.to]),
+            fragment: self.fragment.as_ref().map(|v| &b[v.from..v.to]),
+        }
     }
 }
 
@@ -29,23 +41,4 @@ pub struct Url<'a> {
     pub query: Option<&'a [u8]>,
     pub fragment: Option<&'a [u8]>
 }
-
-pub fn parse(bytes: &[u8]) -> Result<Url<'_>, ParseError> {
-    let p = crate::parser::parse(bytes)?;
-    Ok(Url {
-        scheme: p.scheme.map(|ft| &bytes[ft.from..ft.to]),
-        host: p.host.map(|ft| &bytes[ft.from..ft.to]),
-        port: p.port,
-        path: &bytes[p.path.from..p.path.to],
-        query: p.query.map(|ft| &bytes[ft.from..ft.to]),
-        fragment: p.fragment.map(|ft| &bytes[ft.from..ft.to]),
-    })
-}
-
-#[expect(unused)]
-struct PathIter {
-
-}
-
-
 

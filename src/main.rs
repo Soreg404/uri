@@ -1,6 +1,6 @@
 fn main() {
     let sample = b"https://example.com:443/path/to/resource?query=string#frag";
-
+/*
     let parsed = url::parse(sample).unwrap();
 
     println!(
@@ -13,4 +13,5 @@ fn main() {
         parsed.query.map(|s| str::from_utf8(s)),
         parsed.fragment.map(|s| str::from_utf8(s)),
     );
+*/
 }

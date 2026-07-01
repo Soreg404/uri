@@ -1,0 +1,82 @@
+# BNF frankenstein syntax of uri parser state machine
+
+parser options:
+starts_from_authority:
+starts_from_path: -> path
+expect ( absolute | relative ) uri
+
+allow ( scheme ":" rel_path ) ; (todo) For backwards compatibility.
+                              ; More at the end of appendix C.2.
+                              ; Essentially, change opaque_part -> path.
+
+
+
+scheme:
+if c is not scheme allowed char, then
+- set $invalid_scheme flag
+uric until ":/?#", then
+- if c == ":"
+- - if $invalid_scheme flag set -> panic! invalid scheme
+- - else
+- - - ; scheme is <word>
+- - - -> has_scheme:
+- else -> no_scheme:
+
+
+has_scheme:
+if starts with
+- "?" | "#" panic!
+- "//" -> authority:
+- "/" -> path:
+- uric -> opaque_part:
+- c -> panic!
+
+opaque_part:
+uric until "#" | $, then
+; opaque_part is <word>
+if is $ -> done!
+if c == "#" -> fragment:
+
+no_scheme:
+if starts with "//" -> authority:
+else -> starts_with_path:
+
+starts_from_authority:
+starts with "//" or panic!
+-> authority:
+
+authority: ; incomplete - todo userinfo
+uric until ":" | "/" | "?" | "#" | $, then
+; domain is <word>
+if is $ -> done!
+if c == ":" -> port:
+else -> path:
+
+port:
+digit until "/" | "?" | "#" | $, then
+; port is <word as u16>
+if is $ -> done!
+-> path:
+ 
+
+starts_from_path:
+$path_start = 0
+-> path:
+
+path:
+uric until "?" | "#" | $, then
+; path is <word>
+if is $ -> done!
+-> query:
+
+
+query:
+uric until "#" | $, then
+; query is <word>
+if is $ -> done!
+-> fragment:
+
+fragment:
+; fragment is <word>
+uric until $
+-> done!

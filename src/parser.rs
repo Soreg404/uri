@@ -1,222 +1,275 @@
 
 /*
+ * BNF described in [RFC2396](https://datatracker.ietf.org/doc/html/rfc2396)
  *
- * ^1 URI RFC2396: https://datatracker.ietf.org/doc/html/rfc2396
- *
- *
- * full-url = scheme "://" url-without-scheme
- *
- * url-without-scheme = authority absolute-path url-rest
- *
- * authority = host [ ":" port ]
- *
- * absolute-path = "/" relative-path
- *
- * relative-path = [ segment ] [ / relative-path ]
- *
- * path = absolute-path / relative-path
- *
- *
- * segment = *( unreserved | escaped |
- *              ":" | "@" | "&" | "=" | "+" | "$" | "," )
- * 
- * url-rest = [ "?" query-string ] [ "#" fragment ]
- *
- *        
- * uric = reserved | unreserved
- *
- * reserved = ";" | "/" | "?" | ":" | "@" | "&" | "=" | "+" | "$" | ","
- *
- * unreserved = alphanum | mark
- *
- * mark = "-" | "_" | "." | "!" | "~" | "*" | "'" | "(" | ")"
- *
+ * logic described in uri_parser_state_description.txt
  */
 
-use crate::uri_byte_classes::UriByte;
+use crate::{ FromTo, UrlCacheable, UriByte };
 
-#[derive(Default)]
-pub struct FromTo {
-    pub from: usize,
-    pub to: usize
+#[derive(Debug, Clone)]
+pub enum UrlParseState {
+    Scheme,
+    HasScheme,
+    OpaquePart,
+    NoScheme,
+    StartsWithAuthority,
+    Authority,
+    Port,
+    StartsWithPath,
+    ContinueWithPath,
+    Path,
+    Query,
+    Fragment
 }
 
-pub struct UrlParts {
-    pub scheme: Option<FromTo>,
-    pub host: Option<FromTo>,
-    pub port: Option<u16>,
-    pub path: FromTo,
-    pub query: Option<FromTo>,
-    pub fragment: Option<FromTo>
-}
+pub fn parse(
+    bytes: &[u8],
+    starting_state: UrlParseState
+) -> Result<UrlCacheable, ()> {
+    let mut ret = UrlCacheable::default();
+    if bytes.is_empty() {
+        return Ok(ret);
+    }
+    let mut state = starting_state;
+    let mut i = 0usize;
+    let mut loop_terminator = 0usize;
+    let mut invalid_scheme_flag = false;
+    let mut word_start = 0usize;
 
-#[derive(Debug)]
-pub enum ParseError {
-    TBD(usize, String)
-}
-
-pub fn parse(bytes: &[u8]) -> Result<UrlParts, ParseError> {
-    let mut idx = 0;
-    let mut scheme = None::<FromTo>;
-    while idx < bytes.len() {
-        let c = bytes[idx];
-        if c == b':' {
-            // technically, a uri scheme does not have to be followed by "//"
-            // but http uris ussually (if not always) have it
-            //
-            // todo: to be uri compliant, add support for net_path, abs_path and opaque_part
-            // ref: ^1 RFC2396, section 3.
-            if bytes[idx + 1..].starts_with(b"//") {
-                if idx == 0 { panic!(); }
-                // found a scheme
-                let s = FromTo {
-                    from: 0,
-                    to: idx
-                };
-                scheme = Some(s);
-                idx += 3;
-            }
-            break;
+    macro_rules! trace {
+        ($ctx:expr) => {
+            println!("\x1b[36mtrace!\x1b[0m ({:03}): {}", line!(), $ctx);
         }
-        if !c.is_uri_scheme_allowed(idx == 0) {
-            // not a scheme
-            break;
-        }
-        idx += 1;
     }
 
-    if scheme.is_none() {
-        // error if scheme is needed
-        idx = 0;
-    }
+    'state_loop: loop {
+        trace!(format!("state loop, state={:?}", state));
 
-    // authority
-    // todo: userinfo
-    let authority_start = idx;
-    let mut has_port = false;
-    let mut host = FromTo::default();
-    while idx < bytes.len() {
-        let c = bytes[idx];
-        if c == b':' {
-            has_port = true;
-            host = FromTo {
-                from: authority_start,
-                to: idx
-            };
-            break;
-        }
-        if c == b'/' || c == b'?' || c == b'#' {
-            host = FromTo {
-                from: authority_start,
-                to: idx
-            };
-            break;
-        }
-        if !c.is_uric() {
-            panic!();
-        }
-        if idx + 1 == bytes.len(){
-            idx += 1;
-            host = FromTo {
-                from: authority_start,
-                to: idx
-            };
-            break;
-        }
-        idx += 1;
-    }
-    let mut port = None::<u16>;
-    if has_port {
-        idx += 1;
-        let mut port_tmp = 0u16;
-        while idx < bytes.len() {
-            let c = bytes[idx];
-            if c == b'/' || c == b'?' || c == b'#' || idx + 1 == bytes.len() {
-                if idx + 1 == bytes.len() {
-                    idx += 1;
+        match state.clone() {
+            UrlParseState::Scheme => {
+                let c = bytes[i];
+
+                trace!(format!("scheme begin, i={}, c={:?}, s={:?}",
+                        i,
+                        c as char,
+                        str::from_utf8(&bytes[i..])));
+                if !c.is_uric() {
+                    return Err(());
                 }
-                port = Some(port_tmp);
-                break;
+                match c {
+                    b':' => {
+                        trace!(format!("scheme c={:?}, invalid_scheme_flag={:?}",
+                                c as char,
+                                invalid_scheme_flag));
+                        if invalid_scheme_flag {
+                            return Err(());
+                        }
+                        trace!(format!("scheme, saving scheme: {:?}",
+                            str::from_utf8(&bytes[..i])));
+                        ret.scheme = Some(FromTo { from: 0, to: i });
+                        state = UrlParseState::HasScheme;
+                    }
+                    b'/' | b'?' | b'#' => {
+                        state = UrlParseState::NoScheme;
+                    }
+                    _ => {}
+                }
+                if !invalid_scheme_flag && !c.is_uri_scheme_allowed(i == 0) {
+                    invalid_scheme_flag = true;
+                }
+                if i + 1 == bytes.len() {
+                    state = UrlParseState::NoScheme;
+                }
+                i += 1;
             }
-            if !c.is_ascii_digit() {
-                panic!("non-digit byte in port");
+            UrlParseState::HasScheme => {
+                trace!("has_scheme begin");
+                match bytes.get(i) {
+                    None => unreachable!(),
+                    Some(b'?') | Some(b'#') => return Err(()),
+                    Some(b'/') => {
+                        match bytes.get(i + 1) {
+                            Some(b'/') => {
+                                state = UrlParseState::Authority;
+                                word_start = i + 2;
+                                i += 2;
+                            }
+                            _ => {
+                                state = UrlParseState::Path;
+                                word_start = i;
+                                i += 1;
+                            }
+                        }
+                    },
+                    Some(c) => {
+                        if c.is_uric() {
+                            state = UrlParseState::OpaquePart;
+                            word_start = i;
+                            i += 1;
+                        } else {
+                            return Err(());
+                        }
+                    }
+                }
             }
-            port_tmp *= 10;
-            port_tmp += (c - b'0') as u16;
-            idx += 1;
+            UrlParseState::OpaquePart => todo!(),
+            UrlParseState::NoScheme => {
+                trace!("no_scheme begin");
+                if bytes[i..].starts_with(b"//") {
+                    state = UrlParseState::Authority;
+                    word_start = i + 2;
+                    i += 2;
+                } else {
+                    state = UrlParseState::StartsWithPath;
+                }
+            }
+            UrlParseState::StartsWithAuthority => {
+                if !bytes.starts_with(b"//") {
+                    return Err(());
+                }
+                state = UrlParseState::Authority;
+                word_start = i + 2;
+                i += 2;
+            }
+            UrlParseState::Authority => {
+                let has_port = i < bytes.len() && bytes[i] == b':';
+                if i == bytes.len() || match bytes[i] {
+                    b':' | b'/' | b'?' | b'#' => true,
+                    _ => false
+                } {
+                    ret.host = Some(FromTo { from: word_start, to: i });
+                    if has_port {
+                        state = UrlParseState::Port;
+                        i += 1;
+                    } else {
+                        state = UrlParseState::Path
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            UrlParseState::Port => {
+                if i == bytes.len() {
+                    break 'state_loop;
+                }
+                match bytes[i] {
+                    b'/' | b'?' | b'#' => {
+                        state = UrlParseState::Path;
+                    }
+                    c => {
+                        if !c.is_ascii_digit() {
+                            return Err(());
+                        }
+                        let c = c - b'0';
+                        ret.port = Some(ret.port.unwrap_or(0) * 10 + c as u16);
+                    }
+                }
+                i += 1;
+            }
+            UrlParseState::StartsWithPath => {
+                word_start = 0;
+                state = UrlParseState::Path
+            }
+            UrlParseState::ContinueWithPath => {
+                word_start = i;
+                state = UrlParseState::Path
+            }
+            UrlParseState::Path => {
+                match bytes.get(i) {
+                    None | Some(b'?') | Some(b'#') => {
+                        ret.path = FromTo { from: word_start, to: i };
+                        if i == bytes.len() {
+                            break 'state_loop;
+                        }
+                        state = UrlParseState::Query;
+                        word_start = i + 1;
+                        i += 1;
+                    }
+                    _ => {
+                        i += 1;
+                    }
+                }
+            }
+            UrlParseState::Query => {
+                match bytes.get(i) {
+                    None | Some(b'#') => {
+                        ret.query = Some(FromTo { from: word_start, to: i });
+                        if i == bytes.len() {
+                            break 'state_loop;
+                        }
+                        state = UrlParseState::Fragment;
+                        word_start = i + 1;
+                        i += 1;
+                    }
+                    _ => {
+                        i += 1;
+                    }
+                }
+            }
+            UrlParseState::Fragment => {
+                i = bytes.len();
+                ret.fragment = Some(FromTo { from: word_start, to: i });
+                break 'state_loop;
+            }
         }
-        if bytes[idx - 1] == b':' {
-            panic!("no port given after ':'");
+
+        if i == bytes.len() {
+            panic!("loophole, failed to get done");
+        } else if loop_terminator == bytes.len() {
+            panic!("loop terminated");
+        }
+        loop_terminator += 1;
+    }
+
+    Ok(ret)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! assert_eq_utf8_opt {
+        ($e:expr, $to:literal) => {
+            let _: &Option<&[u8]> = &$e;
+            assert_eq!($e.map(|v| str::from_utf8(v)), Some(Ok($to)));
         }
     }
 
-    let path_start = idx;
-    let mut path = FromTo::default();
-    while idx < bytes.len() {
-        let c = bytes[idx];
-        if c == b'?' || c == b'#' {
-            path = FromTo {
-                from: path_start, 
-                to: idx
-            };
-            break;
-        }
-        if !c.is_uric() {
-            panic!();
-        }
-        if idx + 1 == bytes.len() {
-            idx += 1;
-            path = FromTo {
-                from: path_start, 
-                to: idx
-            };
-            break;
-        }
-        idx += 1;
+    #[test]
+    fn basic_usage() {
+        let sample_abs = b"http://example.com:80/some/where?query=string#fragment";
+        let r = parse(sample_abs, UrlParseState::Scheme).unwrap();
+        let r = r.as_url(sample_abs);
+        assert_eq_utf8_opt!(r.scheme, "http");
     }
 
-    let mut query = None::<FromTo>;
-    if idx < bytes.len() && bytes[idx] == b'?' {
-        idx += 1;
-        let qs_start = idx;
-        while idx < bytes.len() {
-            let c = bytes[idx];
-            if c == b'#' {
-                query = Some(FromTo { from: qs_start, to: idx});
-                break;
-            }
-            if !c.is_uric() {
-                panic!();
-            }
-            if idx + 1 == bytes.len() {
-                idx += 1;
-                query = Some(FromTo { from: qs_start, to: idx});
-                break;
-            }
-            idx += 1;
-        }
-    }
-    
-    let mut fragment = None::<FromTo>;
-    if idx < bytes.len() && bytes[idx] == b'#' {
-        idx += 1;
-        let frag_start = idx;
-        while idx < bytes.len() {
-            let c = bytes[idx];
-            if !c.is_uric() {
-                panic!();
-            }
-            idx += 1;
-        }
-        fragment = Some(FromTo { from: frag_start, to: idx});
-    }
+    mod edge_cases {
+        use super::*;
 
-    Ok(UrlParts {
-        scheme,
-        host: Some(host),
-        port,
-        path,
-        query,
-        fragment
-    })
+        #[test]
+        fn zero_len() {
+            todo!()
+        }
+
+        #[test]
+        fn eof_before_scheme_parsed() {
+            let sample = b"valid-scheme-without-colon";
+            // expect ref_path
+            todo!()
+        }
+
+        mod authority {
+            use super::*;
+
+            #[test]
+            fn abcd() {
+                // with / without scheme
+                // with / without port
+                // with / without path following
+                // with no authority given
+                todo!()
+            }
+        }
+    } 
 }
