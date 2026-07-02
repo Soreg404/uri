@@ -1,9 +1,10 @@
 # BNF frankenstein syntax of uri parser state machine
 
 parser options:
+expect absolute uri -> start from scheme: (default)
+expect relative uri -> start from no_scheme:
 starts_from_authority:
-starts_from_path: -> path
-expect ( absolute | relative ) uri
+starts_from_path:
 
 allow ( scheme ":" rel_path ) ; (todo) For backwards compatibility.
                               ; More at the end of appendix C.2.

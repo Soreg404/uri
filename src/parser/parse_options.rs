@@ -1,44 +1,49 @@
-use super::parser::UrlParseState;
+use crate::{ Url, UrlCacheable };
+use super::parse::UrlParseState;
 
-#[derive(Copy, Clone)]
-pub struct Parser {
+#[derive(Clone)]
+pub struct UrlParser {
     starting_state: UrlParseState
 }
-impl Default for Parser {
+impl Default for UrlParser {
     fn default() -> Self {
         Self {
-            start: ParseStart::Discover;
+            starting_state: UrlParseState::Scheme
         }
     }
 }
-impl Parser {
-    pub fn starts_with_authority() -> Self {
-        Self {
-            start: ParseStart::StartsWithAuthority;
-        }
-    }
-    pub fn starts_with_path() -> Self {
-        Self {
-            start: ParseStart::StartsWithPath;
-        }
-    }
+impl UrlParser {
     pub fn expect_absolute_uri() -> Self {
-        Self {
-            start: ParseStart::ExpectAbsoluteUri;
-        }
+        Self::default()
     }
     pub fn expect_relative_uri() -> Self {
         Self {
-            start: ParseStart::ExpectRelativeUri;
+            starting_state: UrlParseState::NoScheme
         }
     }
-    pub fn parse(self, bytes: &[u8]) -> Result<Url, ()> {
-        self.parse_cacheable()?
-            .as_url(bytes)
+    pub fn starts_from_authority() -> Self {
+        Self {
+            starting_state: UrlParseState::StartsFromAuthority
+        }
     }
-    pub fn parse_cacheable(self, bytes: &[u8]) -> Result<UrlCached, ()> {
-        let url_parts = super::parse::parse(
+    pub fn starts_from_path() -> Self {
+        Self {
+            starting_state: UrlParseState::StartsFromPath
+        }
+    }
 
-        )?
+    pub fn allow_bckwards_compatible_something_something(&mut self) { todo!() }
+
+    pub fn parse<'a>(self, bytes: &'a [u8]) -> Result<Url<'a>, ()> {
+        Ok(
+            self.parse_cacheable(bytes)?
+            .as_url(bytes)
+        )
+    }
+    pub fn parse_cacheable(self, bytes: &[u8]) -> Result<UrlCacheable, ()> {
+        super::parse::parse(
+            bytes,
+            self.starting_state
+        )
     }
 }

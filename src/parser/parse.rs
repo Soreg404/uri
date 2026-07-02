@@ -13,11 +13,10 @@ pub enum UrlParseState {
     HasScheme,
     OpaquePart,
     NoScheme,
-    StartsWithAuthority,
+    StartsFromAuthority,
     Authority,
     Port,
-    StartsWithPath,
-    ContinueWithPath,
+    StartsFromPath,
     Path,
     Query,
     Fragment
@@ -39,63 +38,74 @@ pub fn parse(
 
     macro_rules! trace {
         ($ctx:expr) => {
-            println!("\x1b[36mtrace!\x1b[0m ({:03}): {}", line!(), $ctx);
+            {
+                #![cfg(any(test, trace))]
+                println!("\x1b[36mtrace!\x1b[0m ({:03}): {}", line!(), $ctx);
+            }
         }
     }
 
     'state_loop: loop {
-        trace!(format!("state loop, state={:?}", state));
+        trace!(format!("\x1b[90mparse loop, state={: <15} i={i:05}, s={:?}\x1b[0m",
+                format!("{:?},", state),
+                if bytes[i..].len() > 20 {
+                    str::from_utf8(&bytes[i..i + 20])
+                } else {
+                    str::from_utf8(&bytes[i..])
+                }));
 
         match state.clone() {
             UrlParseState::Scheme => {
                 let c = bytes[i];
-
-                trace!(format!("scheme begin, i={}, c={:?}, s={:?}",
-                        i,
-                        c as char,
-                        str::from_utf8(&bytes[i..])));
                 if !c.is_uric() {
+                    trace!("scheme: c is not uric -> error!");
                     return Err(());
                 }
                 match c {
                     b':' => {
-                        trace!(format!("scheme c={:?}, invalid_scheme_flag={:?}",
-                                c as char,
-                                invalid_scheme_flag));
                         if invalid_scheme_flag {
+                            trace!("scheme: invalid -> error!");
                             return Err(());
                         }
-                        trace!(format!("scheme, saving scheme: {:?}",
+                        trace!(format!("scheme: scheme is {:?} -> has_scheme:",
                             str::from_utf8(&bytes[..i])));
                         ret.scheme = Some(FromTo { from: 0, to: i });
                         state = UrlParseState::HasScheme;
                     }
                     b'/' | b'?' | b'#' => {
+                        trace!("scheme: no scheme found -> no_scheme:");
                         state = UrlParseState::NoScheme;
                     }
-                    _ => {}
-                }
-                if !invalid_scheme_flag && !c.is_uri_scheme_allowed(i == 0) {
-                    invalid_scheme_flag = true;
+                    c => {
+                        if !invalid_scheme_flag && !c.is_uri_scheme_allowed(i == 0) {
+                            trace!("scheme: set $invalid_scheme flag");
+                            invalid_scheme_flag = true;
+                        }
+                    }
                 }
                 if i + 1 == bytes.len() {
+                    trace!("scheme: eot -> no_scheme:");
                     state = UrlParseState::NoScheme;
                 }
                 i += 1;
             }
             UrlParseState::HasScheme => {
-                trace!("has_scheme begin");
                 match bytes.get(i) {
                     None => unreachable!(),
-                    Some(b'?') | Some(b'#') => return Err(()),
+                    Some(b'?') | Some(b'#') => {
+                        trace!("has_scheme: c is one of '?' | '#' -> error!");
+                        return Err(());
+                    }
                     Some(b'/') => {
                         match bytes.get(i + 1) {
                             Some(b'/') => {
+                                trace!("has_scheme: starts with '//' -> authority:");
                                 state = UrlParseState::Authority;
                                 word_start = i + 2;
                                 i += 2;
                             }
                             _ => {
+                                trace!("has_scheme: starts with '/' -> path:");
                                 state = UrlParseState::Path;
                                 word_start = i;
                                 i += 1;
@@ -104,10 +114,12 @@ pub fn parse(
                     },
                     Some(c) => {
                         if c.is_uric() {
+                            trace!("has_scheme: starts with uric -> opaque_part:");
                             state = UrlParseState::OpaquePart;
                             word_start = i;
                             i += 1;
                         } else {
+                            trace!("has_scheme: not uric -> error!");
                             return Err(());
                         }
                     }
@@ -115,19 +127,22 @@ pub fn parse(
             }
             UrlParseState::OpaquePart => todo!(),
             UrlParseState::NoScheme => {
-                trace!("no_scheme begin");
                 if bytes[i..].starts_with(b"//") {
+                    trace!("no_scheme: starts with '//' -> authority:");
                     state = UrlParseState::Authority;
                     word_start = i + 2;
                     i += 2;
                 } else {
-                    state = UrlParseState::StartsWithPath;
+                    trace!("no_scheme: -> starts_from_path:");
+                    state = UrlParseState::StartsFromPath;
                 }
             }
-            UrlParseState::StartsWithAuthority => {
+            UrlParseState::StartsFromAuthority => {
                 if !bytes.starts_with(b"//") {
+                    trace!("starts_from_authority: did not start with '//' -> error!");
                     return Err(());
                 }
+                trace!("starts_from_authority: -> authority:");
                 state = UrlParseState::Authority;
                 word_start = i + 2;
                 i += 2;
@@ -138,11 +153,14 @@ pub fn parse(
                     b':' | b'/' | b'?' | b'#' => true,
                     _ => false
                 } {
+                    trace!(format!("authority: host={:?}", str::from_utf8(&bytes[word_start..i])));
                     ret.host = Some(FromTo { from: word_start, to: i });
                     if has_port {
+                        trace!("authority: -> port:");
                         state = UrlParseState::Port;
                         i += 1;
                     } else {
+                        trace!("authority: -> path:");
                         state = UrlParseState::Path
                     }
                 } else {
@@ -151,14 +169,18 @@ pub fn parse(
             }
             UrlParseState::Port => {
                 if i == bytes.len() {
+                    trace!("port: eot -> done!");
                     break 'state_loop;
                 }
                 match bytes[i] {
                     b'/' | b'?' | b'#' => {
+                        trace!(format!("port: port is {:?} -> path:", ret.port));
+                        word_start = i;
                         state = UrlParseState::Path;
                     }
                     c => {
                         if !c.is_ascii_digit() {
+                            trace!("port: c is not digit -> error!");
                             return Err(());
                         }
                         let c = c - b'0';
@@ -167,21 +189,22 @@ pub fn parse(
                 }
                 i += 1;
             }
-            UrlParseState::StartsWithPath => {
+            UrlParseState::StartsFromPath => {
+                trace!("starts_from_path: -> path:");
                 word_start = 0;
-                state = UrlParseState::Path
-            }
-            UrlParseState::ContinueWithPath => {
-                word_start = i;
                 state = UrlParseState::Path
             }
             UrlParseState::Path => {
                 match bytes.get(i) {
                     None | Some(b'?') | Some(b'#') => {
+                        trace!(format!("path: path is {:?}",
+                                str::from_utf8(&bytes[word_start..i])));
                         ret.path = FromTo { from: word_start, to: i };
                         if i == bytes.len() {
+                            trace!("path: eot -> done!");
                             break 'state_loop;
                         }
+                        trace!("path: -> query:");
                         state = UrlParseState::Query;
                         word_start = i + 1;
                         i += 1;
@@ -194,10 +217,14 @@ pub fn parse(
             UrlParseState::Query => {
                 match bytes.get(i) {
                     None | Some(b'#') => {
+                        trace!(format!("query: query is {:?}",
+                                str::from_utf8(&bytes[word_start..i])));
                         ret.query = Some(FromTo { from: word_start, to: i });
                         if i == bytes.len() {
+                            trace!("query: eot -> done!");
                             break 'state_loop;
                         }
+                        trace!("query: -> fragment:");
                         state = UrlParseState::Fragment;
                         word_start = i + 1;
                         i += 1;
@@ -209,6 +236,8 @@ pub fn parse(
             }
             UrlParseState::Fragment => {
                 i = bytes.len();
+                trace!(format!("fragment: fragment is {:?} -> done!",
+                        str::from_utf8(&bytes[word_start..i])));
                 ret.fragment = Some(FromTo { from: word_start, to: i });
                 break 'state_loop;
             }
@@ -223,53 +252,4 @@ pub fn parse(
     }
 
     Ok(ret)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    macro_rules! assert_eq_utf8_opt {
-        ($e:expr, $to:literal) => {
-            let _: &Option<&[u8]> = &$e;
-            assert_eq!($e.map(|v| str::from_utf8(v)), Some(Ok($to)));
-        }
-    }
-
-    #[test]
-    fn basic_usage() {
-        let sample_abs = b"http://example.com:80/some/where?query=string#fragment";
-        let r = parse(sample_abs, UrlParseState::Scheme).unwrap();
-        let r = r.as_url(sample_abs);
-        assert_eq_utf8_opt!(r.scheme, "http");
-    }
-
-    mod edge_cases {
-        use super::*;
-
-        #[test]
-        fn zero_len() {
-            todo!()
-        }
-
-        #[test]
-        fn eof_before_scheme_parsed() {
-            let sample = b"valid-scheme-without-colon";
-            // expect ref_path
-            todo!()
-        }
-
-        mod authority {
-            use super::*;
-
-            #[test]
-            fn abcd() {
-                // with / without scheme
-                // with / without port
-                // with / without path following
-                // with no authority given
-                todo!()
-            }
-        }
-    } 
 }

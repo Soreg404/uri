@@ -2,6 +2,7 @@ mod uri_byte_classes;
 pub use uri_byte_classes::UriByte;
 
 mod parser;
+pub use parser::UrlParser;
 
 pub mod codec;
 
@@ -11,7 +12,7 @@ struct FromTo {
     pub to: usize
 }
 #[derive(Default)]
-struct UrlCacheable {
+pub struct UrlCacheable {
     scheme: Option<FromTo>,
     host: Option<FromTo>,
     port: Option<u16>,
@@ -33,12 +34,33 @@ impl UrlCacheable {
     }
 }
 
+#[derive(Default)]
 pub struct Url<'a> {
-    pub scheme: Option<&'a [u8]>,
-    pub host: Option<&'a [u8]>,
-    pub port: Option<u16>,
-    pub path: &'a [u8],
-    pub query: Option<&'a [u8]>,
-    pub fragment: Option<&'a [u8]>
+    scheme: Option<&'a [u8]>,
+    host: Option<&'a [u8]>,
+    port: Option<u16>,
+    path: &'a [u8],
+    query: Option<&'a [u8]>,
+    fragment: Option<&'a [u8]>
+}
+impl Url<'_> {
+    pub fn scheme(&self) -> Option<&[u8]> {
+        self.scheme
+    }
+    pub fn host(&self) -> Option<&[u8]> {
+        self.host
+    }
+    pub fn port(&self) -> Option<u16> {
+        self.port
+    }
+    pub fn path(&self) -> &[u8] {
+        self.path
+    }
+    pub fn query(&self) -> Option<&[u8]> {
+        self.query
+    }
+    pub fn fragment(&self) -> Option<&[u8]> {
+        self.fragment
+    }
 }
 
