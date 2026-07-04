@@ -53,14 +53,19 @@ impl Url<'_> {
     pub fn port(&self) -> Option<u16> {
         self.port
     }
-    pub fn path(&self) -> &[u8] {
+    pub fn path_encoded_raw(&self) -> &[u8] {
         self.path
     }
-    pub fn query(&self) -> Option<&[u8]> {
+    pub fn query_encoded_raw(&self) -> Option<&[u8]> {
         self.query
     }
     pub fn fragment(&self) -> Option<&[u8]> {
         self.fragment
     }
+
+    pub fn is_abs_path(&self) -> bool {
+        self.path.starts_with(b"/")
+    }
 }
 
+mod url_path;

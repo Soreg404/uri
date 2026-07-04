@@ -8,8 +8,8 @@ fn main() {
         parsed.scheme().map(|s| str::from_utf8(s)),
         parsed.host().map(|s| str::from_utf8(s)),
         parsed.port(),
-        str::from_utf8(parsed.path()),
-        parsed.query().map(|s| str::from_utf8(s)),
+        str::from_utf8(parsed.path_encoded_raw()),
+        parsed.query_encoded_raw().map(|s| str::from_utf8(s)),
         parsed.fragment().map(|s| str::from_utf8(s)),
     );
 }
