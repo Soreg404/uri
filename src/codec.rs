@@ -161,18 +161,44 @@ fn decode_next_byte(src: &[u8]) -> DNBResult {
     }
 }
 
-#[expect(unused)]
-pub fn encode(bytes: &[u8], dest_buffer: &mut [u8]) -> Result<usize, usize> {
+// todo: handle TooSmallBuffer error
+pub fn encode<'src, 'dest>(
+    bytes: &'src [u8],
+    dest_buffer: &'dest mut [u8]
+) -> Result<&'dest [u8], usize> {
+    #[expect(unused)]
     let mut buffer_too_small = false;
-    let mut buf_head = 0usize;
-    let mut count = 0usize;
+    let mut dest_head = 0usize;
     let mut i = 0;
     while i < bytes.len() {
-        // match bytes[i] {
-        //
-        // }
+        let c = bytes[i];
+        i += 1;
+        if c.is_uri_unreserved() {
+            // push c
+            dest_buffer[dest_head] = c;
+            dest_head += 1;
+        } else {
+            // push encode
+            let lo = c & 0x0f;
+            let hi = c >> 4;
+
+            fn hexit(b: u8) -> u8 { 
+                if b < 10 {
+                    b'0' + b
+                } else {
+                    b'A' + (b - 10)
+                }
+            }
+            let lo = hexit(lo);
+            let hi = hexit(hi);
+
+            dest_buffer[dest_head..dest_head + 3]
+                .copy_from_slice(&[b'%', hi, lo]);
+            dest_head += 3;
+        }
     }
-    todo!()
+
+    Ok(&dest_buffer[..dest_head])
 }
 
 #[expect(unused)]
