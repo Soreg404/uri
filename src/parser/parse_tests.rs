@@ -122,10 +122,8 @@ fn zero_len() {
 fn scheme() {
     url_eq!(
         b"word:",
-        Url {
-            scheme: Some(b"word"),
-            ..Default::default()
-        }
+        // expect error
+        Url::default()
     );
     url_eq!(
         b"word",
