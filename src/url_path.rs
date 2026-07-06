@@ -125,7 +125,7 @@ mod tests {
     #[test]
     fn simple_path() {
         let url = Url {
-            path: b"/lorem/ipsum/dolor/sit/amet",
+            path_raw: b"/lorem/ipsum/dolor/sit/amet",
             ..Default::default()
         };
         let mut b = prep_buffers();
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn excessive_slashes() {
         let url = Url {
-            path: b"//////hello/////world///////",
+            path_raw: b"//////hello/////world///////",
             ..Default::default()
         };
         let mut b = prep_buffers();
@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn normalize_path() {
         let url = Url {
-            path: b"/lorem/ipsum/../../jolly/cooperation",
+            path_raw: b"/lorem/ipsum/../../jolly/cooperation",
             ..Default::default()
         };
         let mut b = prep_buffers();
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn normalize_path_edge_case() {
         let url = Url {
-            path: b"////silly/../..////../../hi",
+            path_raw: b"////silly/../..////../../hi",
             ..Default::default()
         };
         let mut b = prep_buffers();
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn decode_and_normalize() {
         let url = Url {
-            path: b"ab+/ab%20/%25%61%62/%20/%E7%8C%AB",
+            path_raw: b"ab+/ab%20/%25%61%62/%20/%E7%8C%AB",
             ..Default::default()
         };
         let mut b = prep_buffers();
