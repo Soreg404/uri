@@ -1,0 +1,47 @@
+use std::fmt::{ Debug, Formatter, Error };
+
+impl Debug for super::Url<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error>{
+        fn helper(s: &[u8]) -> &str {
+            str::from_utf8(s)
+                .expect("URI Parser is supposed to allow only ASCII characters")
+        }
+
+        let mut b1 = Vec::new();
+        b1.resize(1000, 0u8);
+        let mut b2 = Vec::new();
+        b2.resize(10000, 0u8);
+        let mut b3 = Vec::new();
+        b3.resize(100, 0usize);
+        let path_parts = {
+            match self.get_decoded_path(&mut b1, &mut b2, &mut b3) {
+                Err(()) => Err(()),
+                Ok(v) => {
+                    let mut offs = 0;
+                    let mut ret = Vec::new();
+                    for l in v.tmp_lengths() {
+                        ret.push(
+                            String::from_utf8_lossy(
+                                &v.tmp_parts()[offs..offs + l]
+                            ).to_string()
+                        );
+                        offs += l;
+                    }
+                    Ok(ret)
+                }
+            }
+        };
+
+        f.debug_struct("Uri")
+            .field("scheme", &self.scheme.map(helper))
+            .field("host", &self.host_raw.map(helper))
+            .field("port", &self.port)
+            .field("path_raw", &helper(self.path_raw))
+            .field("path_decoded", &path_parts)
+            .field("query_raw", &self.query_raw.map(helper))
+            .field("query_decoded", &"todo")
+            .field("fragment", &self.fragment_raw.map(helper))
+            .finish()
+    }
+}
+

@@ -1,3 +1,5 @@
+// todo: fix name inconsistencies: Ur(l) / Ur(i)
+
 mod uri_byte_classes;
 pub use uri_byte_classes::UriByte;
 
@@ -25,47 +27,31 @@ impl UrlCacheable {
         let b = original_bytes;
         Url {
             scheme: self.scheme.as_ref().map(|v| &b[v.from..v.to]),
-            host: self.host.as_ref().map(|v| &b[v.from..v.to]),
+            host_raw: self.host.as_ref().map(|v| &b[v.from..v.to]),
             port: self.port,
-            path: &b[self.path.from..self.path.to],
-            query: self.query.as_ref().map(|v| &b[v.from..v.to]),
-            fragment: self.fragment.as_ref().map(|v| &b[v.from..v.to]),
+            path_raw: &b[self.path.from..self.path.to],
+            query_raw: self.query.as_ref().map(|v| &b[v.from..v.to]),
+            fragment_raw: self.fragment.as_ref().map(|v| &b[v.from..v.to]),
         }
     }
 }
 
 #[derive(Default)]
 pub struct Url<'a> {
-    scheme: Option<&'a [u8]>,
-    host: Option<&'a [u8]>,
-    port: Option<u16>,
-    path: &'a [u8],
-    query: Option<&'a [u8]>,
-    fragment: Option<&'a [u8]>
+    pub scheme: Option<&'a [u8]>,
+    pub host_raw: Option<&'a [u8]>,
+    pub port: Option<u16>,
+    pub path_raw: &'a [u8],
+    pub query_raw: Option<&'a [u8]>,
+    pub fragment_raw: Option<&'a [u8]>
 }
 impl Url<'_> {
-    pub fn scheme(&self) -> Option<&[u8]> {
-        self.scheme
-    }
-    pub fn host(&self) -> Option<&[u8]> {
-        self.host
-    }
-    pub fn port(&self) -> Option<u16> {
-        self.port
-    }
-    pub fn path_encoded_raw(&self) -> &[u8] {
-        self.path
-    }
-    pub fn query_encoded_raw(&self) -> Option<&[u8]> {
-        self.query
-    }
-    pub fn fragment(&self) -> Option<&[u8]> {
-        self.fragment
-    }
-
     pub fn is_abs_path(&self) -> bool {
-        self.path.starts_with(b"/")
+        self.path_raw.starts_with(b"/")
     }
 }
 
+mod uri_debug_view;
+
+// todo: url_path? uri_path? change later
 mod url_path;

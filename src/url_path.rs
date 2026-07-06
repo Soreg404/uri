@@ -2,7 +2,14 @@
 pub struct PathParts<'arena> {
     parts: &'arena [u8],
     lengths: &'arena [usize],
-    num_parts: usize
+}
+impl PathParts<'_> {
+    pub fn tmp_parts(&self) -> &[u8] {
+        self.parts
+    }
+    pub fn tmp_lengths(&self) -> &[usize] {
+        self.lengths
+    }
 }
 
 impl<'a> super::Url<'a> {
@@ -18,7 +25,7 @@ impl<'a> super::Url<'a> {
          * cuz cache and that stuff
          */
 
-        let src = self.path;
+        let src = self.path_raw;
         // starting from end to easier normalize the path
         let mut src_i = src.len();
         let mut part_counter = 0;
@@ -68,7 +75,7 @@ impl<'a> super::Url<'a> {
                 single_part_decode_scratch_buffer,
                 false, false
             ) {
-                Err(crate::codec::CodecError::BufferTooSmall(l)) => {
+                Err(crate::codec::CodecError::BufferTooSmall(_l)) => {
                     // buffer too small - single part too big ({l})
                     return Err(());
                 },
@@ -93,7 +100,6 @@ impl<'a> super::Url<'a> {
         Ok(PathParts {
             parts: &dest[dest_head..],
             lengths: &lengths[lengths.len() - part_counter..],
-            num_parts: part_counter
         })
     }
 }
@@ -124,7 +130,6 @@ mod tests {
         };
         let mut b = prep_buffers();
         let p = decode_helper(&url, &mut b).unwrap();
-        assert_eq!(p.num_parts, 5);
         assert_eq!(p.parts, b"loremipsumdolorsitamet");
         assert_eq!(p.lengths, &[5, 5, 5, 3, 4]);
     }
@@ -137,7 +142,6 @@ mod tests {
         };
         let mut b = prep_buffers();
         let p = decode_helper(&url, &mut b).unwrap();
-        assert_eq!(p.num_parts, 2);
         assert_eq!(p.parts, b"helloworld");
         assert_eq!(p.lengths, &[5, 5]);
     }
@@ -150,7 +154,6 @@ mod tests {
         };
         let mut b = prep_buffers();
         let p = decode_helper(&url, &mut b).unwrap();
-        assert_eq!(p.num_parts, 2);
         assert_eq!(p.parts, b"jollycooperation");
         assert_eq!(p.lengths, &[5, 11]);
     }
@@ -163,7 +166,6 @@ mod tests {
         };
         let mut b = prep_buffers();
         let p = decode_helper(&url, &mut b).unwrap();
-        assert_eq!(p.num_parts, 1);
         assert_eq!(p.parts, b"hi");
         assert_eq!(p.lengths, &[2]);
     }
@@ -176,7 +178,6 @@ mod tests {
         };
         let mut b = prep_buffers();
         let p = decode_helper(&url, &mut b).unwrap();
-        assert_eq!(p.num_parts, 5);
         assert_eq!(p.parts, b"ab ab %ab \xe7\x8c\xab");
         assert_eq!(p.lengths, &[3, 3, 3, 1, 3]);
     }

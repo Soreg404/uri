@@ -25,7 +25,7 @@ pub enum UrlParseState {
 pub fn parse(
     bytes: &[u8],
     starting_state: UrlParseState
-) -> Result<UrlCacheable, ()> {
+) -> Result<UrlCacheable, &'static str> {
     let mut ret = UrlCacheable::default();
     if bytes.is_empty() {
         return Ok(ret);
@@ -48,8 +48,8 @@ pub fn parse(
     'state_loop: loop {
         trace!(format!("\x1b[90mparse loop, state={: <15} i={i:05}, s={:?}\x1b[0m",
                 format!("{:?},", state),
-                if bytes[i..].len() > 20 {
-                    str::from_utf8(&bytes[i..i + 20])
+                if bytes[i..].len() > 10 {
+                    str::from_utf8(&bytes[i..i + 10])
                 } else {
                     str::from_utf8(&bytes[i..])
                 }));
@@ -57,20 +57,21 @@ pub fn parse(
         match state.clone() {
             UrlParseState::Scheme => {
                 let c = bytes[i];
-                if !c.is_uric() {
+                if !c.is_uric() && c != b'#' {
                     trace!("scheme: c is not uric -> error!");
-                    return Err(());
+                    return Err("illegal byte");
                 }
                 match c {
                     b':' => {
                         if invalid_scheme_flag {
                             trace!("scheme: invalid -> error!");
-                            return Err(());
+                            return Err("invalid scheme");
                         }
                         trace!(format!("scheme: scheme is {:?} -> has_scheme:",
                             str::from_utf8(&bytes[..i])));
                         ret.scheme = Some(FromTo { from: 0, to: i });
                         state = UrlParseState::HasScheme;
+                        i += 1;
                     }
                     b'/' | b'?' | b'#' => {
                         trace!("scheme: no scheme found -> no_scheme:");
@@ -81,20 +82,19 @@ pub fn parse(
                             trace!("scheme: set $invalid_scheme flag");
                             invalid_scheme_flag = true;
                         }
+                        if i + 1 == bytes.len() {
+                            trace!("scheme: eot -> no_scheme:");
+                            state = UrlParseState::NoScheme;
+                        }
+                        i += 1;
                     }
                 }
-                if i + 1 == bytes.len() {
-                    trace!("scheme: eot -> no_scheme:");
-                    state = UrlParseState::NoScheme;
-                }
-                i += 1;
             }
             UrlParseState::HasScheme => {
                 match bytes.get(i) {
-                    None => unreachable!(),
-                    Some(b'?') | Some(b'#') => {
-                        trace!("has_scheme: c is one of '?' | '#' -> error!");
-                        return Err(());
+                    None | Some(b'?') | Some(b'#') => {
+                        trace!("has_scheme: c is one of '?' | '#' | $ -> error!");
+                        return Err("invalid uri: invalid byte after scheme");
                     }
                     Some(b'/') => {
                         match bytes.get(i + 1) {
@@ -113,21 +113,20 @@ pub fn parse(
                         }
                     },
                     Some(c) => {
-                        if c.is_uric() {
-                            trace!("has_scheme: starts with uric -> opaque_part:");
-                            state = UrlParseState::OpaquePart;
-                            word_start = i;
-                            i += 1;
-                        } else {
+                        if !c.is_uric() {
                             trace!("has_scheme: not uric -> error!");
-                            return Err(());
+                            return Err("illegal byte");
                         }
+                        trace!("has_scheme: starts with uric -> opaque_part:");
+                        state = UrlParseState::OpaquePart;
+                        word_start = i;
+                        i += 1;
                     }
                 }
             }
             UrlParseState::OpaquePart => todo!(),
             UrlParseState::NoScheme => {
-                if bytes[i..].starts_with(b"//") {
+                if bytes.starts_with(b"//") {
                     trace!("no_scheme: starts with '//' -> authority:");
                     state = UrlParseState::Authority;
                     word_start = i + 2;
@@ -140,7 +139,7 @@ pub fn parse(
             UrlParseState::StartsFromAuthority => {
                 if !bytes.starts_with(b"//") {
                     trace!("starts_from_authority: did not start with '//' -> error!");
-                    return Err(());
+                    return Err("expected authority");
                 }
                 trace!("starts_from_authority: -> authority:");
                 state = UrlParseState::Authority;
@@ -161,6 +160,7 @@ pub fn parse(
                         i += 1;
                     } else {
                         trace!("authority: -> path:");
+                        word_start = i;
                         state = UrlParseState::Path
                     }
                 } else {
@@ -181,13 +181,13 @@ pub fn parse(
                     c => {
                         if !c.is_ascii_digit() {
                             trace!("port: c is not digit -> error!");
-                            return Err(());
+                            return Err("invalid uri: non-digit in port");
                         }
                         let c = c - b'0';
                         ret.port = Some(ret.port.unwrap_or(0) * 10 + c as u16);
+                        i += 1;
                     }
                 }
-                i += 1;
             }
             UrlParseState::StartsFromPath => {
                 trace!("starts_from_path: -> path:");
@@ -195,58 +195,79 @@ pub fn parse(
                 state = UrlParseState::Path
             }
             UrlParseState::Path => {
+                ret.path = FromTo { from: word_start, to: i };
+                if i == bytes.len() || bytes[i] == b'?' || bytes[i] == b'#' {
+                    trace!(format!("path: path is {:?}", str::from_utf8(&bytes[word_start..i])));
+                }
                 match bytes.get(i) {
-                    None | Some(b'?') | Some(b'#') => {
-                        trace!(format!("path: path is {:?}",
-                                str::from_utf8(&bytes[word_start..i])));
-                        ret.path = FromTo { from: word_start, to: i };
-                        if i == bytes.len() {
-                            trace!("path: eot -> done!");
-                            break 'state_loop;
-                        }
+                    None => {
+                        trace!("path: eot -> done!");
+                        break 'state_loop;
+                    }
+                    Some(b'?') => {
                         trace!("path: -> query:");
                         state = UrlParseState::Query;
                         word_start = i + 1;
                         i += 1;
                     }
-                    _ => {
+                    Some(b'#') => {
+                        trace!("path: -> fragment:");
+                        state = UrlParseState::Fragment;
+                        word_start = i + 1;
+                        i += 1;
+                    }
+                    Some(c) => {
+                        if !c.is_uric() {
+                            trace!("path: c is not uric -> error!");
+                            return Err("illegal byte");
+                        }
                         i += 1;
                     }
                 }
             }
             UrlParseState::Query => {
+                ret.query = Some(FromTo { from: word_start, to: i });
+                if i == bytes.len() || bytes[i] == b'#' {
+                    trace!(format!("query: query is {:?}",
+                            str::from_utf8(&bytes[word_start..i])));
+                }
                 match bytes.get(i) {
-                    None | Some(b'#') => {
-                        trace!(format!("query: query is {:?}",
-                                str::from_utf8(&bytes[word_start..i])));
-                        ret.query = Some(FromTo { from: word_start, to: i });
-                        if i == bytes.len() {
-                            trace!("query: eot -> done!");
-                            break 'state_loop;
-                        }
+                    None => {
+                        trace!("query: eot -> done!");
+                        break 'state_loop;
+                    }
+                    Some(b'#') => {
                         trace!("query: -> fragment:");
                         state = UrlParseState::Fragment;
                         word_start = i + 1;
                         i += 1;
                     }
-                    _ => {
+                    Some(c) => {
+                        if !c.is_uric() {
+                            trace!("query: c is not uric -> error!");
+                            return Err("illegal byte");
+                        }
                         i += 1;
                     }
                 }
             }
             UrlParseState::Fragment => {
-                i = bytes.len();
-                trace!(format!("fragment: fragment is {:?} -> done!",
-                        str::from_utf8(&bytes[word_start..i])));
-                ret.fragment = Some(FromTo { from: word_start, to: i });
-                break 'state_loop;
+                if i == bytes.len() {
+                    ret.fragment = Some(FromTo { from: word_start, to: i });
+                    trace!(format!("fragment: fragment is {:?} -> done!",
+                            str::from_utf8(&bytes[word_start..i])));
+                    break 'state_loop;
+                }
+                if !bytes[i].is_uric() {
+                    trace!("fragment: c is not uric -> error!");
+                    return Err("illegal byte");
+                }
+                i += 1;
             }
         }
 
-        if i == bytes.len() {
-            panic!("loophole, failed to get done");
-        } else if loop_terminator == bytes.len() {
-            panic!("loop terminated");
+        if loop_terminator == bytes.len() * 2 + 10 {
+            panic!("loop terminated (len() * 2 + 10)");
         }
         loop_terminator += 1;
     }

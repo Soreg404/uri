@@ -34,13 +34,13 @@ impl UrlParser {
 
     pub fn allow_bckwards_compatible_something_something(&mut self) { todo!() }
 
-    pub fn parse<'a>(self, bytes: &'a [u8]) -> Result<Url<'a>, ()> {
+    pub fn parse<'a>(self, bytes: &'a [u8]) -> Result<Url<'a>, &'static str> {
         Ok(
             self.parse_cacheable(bytes)?
             .as_url(bytes)
         )
     }
-    pub fn parse_cacheable(self, bytes: &[u8]) -> Result<UrlCacheable, ()> {
+    pub fn parse_cacheable(self, bytes: &[u8]) -> Result<UrlCacheable, &'static str> {
         super::parse::parse(
             bytes,
             self.starting_state
