@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 // todo: fix name inconsistencies: Ur(l) / Ur(i)
 
 mod uri_byte_classes;
