@@ -2,6 +2,15 @@
 
 // todo: fix name inconsistencies: Ur(l) / Ur(i)
 
+macro_rules! trace {
+    ($ctx:expr) => {
+        {
+            #![cfg(any(test, trace))]
+            println!("\x1b[36mtrace!\x1b[0m ({}:{:04}) [uri_parse] {}", file!(), line!(), $ctx);
+        }
+    }
+}
+
 mod uri_byte_classes;
 pub use uri_byte_classes::UriByte;
 
@@ -10,12 +19,12 @@ pub use parser::UrlParser;
 
 pub mod codec;
 
-#[derive(Default)]
+#[derive(Debug, Default, Eq, PartialEq)]
 struct FromTo {
     pub from: usize,
     pub to: usize
 }
-#[derive(Default)]
+#[derive(Debug, Default, Eq, PartialEq)]
 pub struct UrlCacheable {
     scheme: Option<FromTo>,
     host: Option<FromTo>,

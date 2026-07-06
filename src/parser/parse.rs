@@ -26,8 +26,11 @@ pub fn parse(
     bytes: &[u8],
     starting_state: UrlParseState
 ) -> Result<UrlCacheable, &'static str> {
+    trace!("parse begin");
+
     let mut ret = UrlCacheable::default();
     if bytes.is_empty() {
+        trace!("empty bytes -> done!");
         return Ok(ret);
     }
     let mut state = starting_state;
@@ -35,15 +38,6 @@ pub fn parse(
     let mut loop_terminator = 0usize;
     let mut invalid_scheme_flag = false;
     let mut word_start = 0usize;
-
-    macro_rules! trace {
-        ($ctx:expr) => {
-            {
-                #![cfg(any(test, trace))]
-                println!("\x1b[36mtrace!\x1b[0m ({:03}): {}", line!(), $ctx);
-            }
-        }
-    }
 
     'state_loop: loop {
         trace!(format!("\x1b[90mparse loop, state={: <15} i={i:05}, s={:?}\x1b[0m",

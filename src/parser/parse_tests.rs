@@ -109,7 +109,6 @@ fn basic_usage() {
         });
 }
 
-
 #[test]
 fn zero_len() {
     url_eq!(
@@ -119,12 +118,16 @@ fn zero_len() {
 }
 
 #[test]
-fn scheme() {
-    url_eq!(
-        b"word:",
-        // expect error
-        Url::default()
+fn invalid_scheme() {
+    assert_eq!(
+        parse(b"word:", UrlParseState::Scheme),
+        // tmp, until no proper errors
+        Err("invalid uri: invalid byte after scheme")
     );
+}
+
+#[test]
+fn no_scheme_one_word() {
     url_eq!(
         b"word",
         Url {
@@ -135,13 +138,49 @@ fn scheme() {
 }
 
 #[test]
-fn authority() {
+fn no_scheme_more() {
     url_eq!(
-        b"s://a",
+        b"path/to/resource?query=string",
         Url {
-            scheme: Some(b"s"),
-            host_raw: Some(b"a"),
+            path_raw: b"path/to/resource",
+            query_raw: Some(b"query=string"),
             ..Default::default()
         }
-    )
+    );
+}
+
+#[test]
+fn has_scheme_and_authority() {
+    url_eq!(
+        b"scheme://domain.com:190//",
+        Url {
+            scheme: Some(b"scheme"),
+            host_raw: Some(b"domain.com"),
+            port: Some(190),
+            path_raw: b"//",
+            ..Default::default()
+        }
+    );
+}
+#[test]
+fn no_scheme_authority() {
+    url_eq!(
+        b"//domain.tld:90",
+        Url {
+            host_raw: Some(b"domain.tld"),
+            port: Some(90),
+            ..Default::default()
+        }
+    );
+}
+#[test]
+fn no_scheme_authority_empty() {
+    url_eq!(
+        b"/////empty_auth",
+        Url {
+            host_raw: Some(b""),
+            path_raw: b"///empty_auth",
+            ..Default::default()
+        }
+    );
 }
