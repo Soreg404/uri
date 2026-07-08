@@ -1,15 +1,62 @@
-#[allow(dead_code)]
 pub struct PathParts<'arena> {
     parts: &'arena [u8],
     lengths: &'arena [usize],
 }
+
+#[derive(Copy, Clone)]
+pub struct PathPartsIter<'a> {
+    target: &'a PathParts<'a>,
+    offs: usize,
+    n_part: usize
+}
+impl<'a> Iterator for PathPartsIter<'a> {
+    type Item = &'a [u8];
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.n_part >= self.target.lengths.len() {
+            None
+        } else {
+            let c_len = self.target.lengths[self.n_part];
+            let part = &self.target.parts[self.offs..self.offs + c_len];
+            self.n_part += 1;
+            self.offs += c_len;
+            Some(part)
+        }
+    }
+}
 impl PathParts<'_> {
-    pub fn tmp_parts(&self) -> &[u8] {
-        self.parts
+    pub fn iter(&self) -> PathPartsIter<'_> {
+        PathPartsIter {
+            target: self,
+            offs: 0,
+            n_part: 0
+        }
     }
-    pub fn tmp_lengths(&self) -> &[usize] {
-        self.lengths
+}
+
+impl PathParts<'_> {
+    pub fn eq(&self, other: &[&[u8]]) -> bool {
+        let mut other_iter = other.iter();
+        for p in self.iter() {
+            match other_iter.next() {
+                None => return false,
+                Some(v) => {
+                    if p != *v {
+                        return false
+                    }
+                }
+            }
+        }
+        true
     }
+}
+#[test]
+fn test_path_parts_eq() {
+    let test = PathParts {
+        parts: b"loremipsumdolorsitamet",
+        lengths: &[5, 5, 5, 3, 4]
+    };
+    assert!(test.eq(&[b"lorem", b"ipsum", b"dolor", b"sit", b"amet"]));
+    assert!(!test.eq(&[b"it", b"is", b"bananas"]))
 }
 
 impl<'a> super::Url<'a> {

@@ -17,15 +17,9 @@ impl Debug for super::Url<'_> {
             match self.get_decoded_path(&mut b1, &mut b2, &mut b3) {
                 Err(()) => Err(()),
                 Ok(v) => {
-                    let mut offs = 0;
                     let mut ret = Vec::new();
-                    for l in v.tmp_lengths() {
-                        ret.push(
-                            String::from_utf8_lossy(
-                                &v.tmp_parts()[offs..offs + l]
-                            ).to_string()
-                        );
-                        offs += l;
+                    for p in v.iter() {
+                        ret.push(String::from_utf8_lossy(p).to_string());
                     }
                     Ok(ret)
                 }
