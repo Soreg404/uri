@@ -17,7 +17,7 @@ pub enum CodecError<'src, 'dest> {
 }
 
 /*
- * uri_unsafe_bytes are all besides is_uri_unreserved
+ * uri_unsafe_bytes: safe bytes are only `UriByte::is_uri_unreserved`
  */
 pub fn decode<'src, 'dest>(
     bytes: &'src [u8],

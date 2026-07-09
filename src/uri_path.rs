@@ -59,9 +59,9 @@ fn test_path_parts_eq() {
     assert!(!test.eq(&[b"it", b"is", b"bananas"]))
 }
 
-impl<'a> super::Url<'a> {
-    pub fn get_decoded_path<'tmp, 'persistent>(
-        &'a self,
+impl PathParts<'_> {
+    pub fn parse_decode<'a, 'tmp, 'persistent>(
+        path_raw: &'a [u8],
         single_part_decode_scratch_buffer: &'tmp mut [u8],
         decoded_path_parts_arena: &'persistent mut [u8],
         parts_lengths_arena: &'persistent mut [usize]
@@ -72,7 +72,7 @@ impl<'a> super::Url<'a> {
          * cuz cache and that stuff
          */
 
-        let src = self.path_raw;
+        let src = path_raw;
         // starting from end to easier normalize the path
         let mut src_i = src.len();
         let mut part_counter = 0;
@@ -154,7 +154,7 @@ impl<'a> super::Url<'a> {
 #[cfg(test)]
 mod tests {
     use super::PathParts;
-    use crate::Url;
+    use crate::Uri;
 
     fn prep_buffers() -> (Vec<u8>, Vec<usize>) {
         let a1 = { let mut v = Vec::new(); v.resize(1000, 0u8); v };
@@ -162,69 +162,71 @@ mod tests {
         (a1, a2)
     }
     fn decode_helper<'a>(
-        url: &'a Url<'a>,
+        uri: &'a Uri<'a>,
         buffers: &'a mut (Vec<u8>, Vec<usize>)
     ) -> Result<PathParts<'a>, ()> {
         let mut sb = { let mut v = Vec::new(); v.resize(1000, 0u8); v };
-        url.get_decoded_path(&mut sb, &mut buffers.0, &mut buffers.1)
+        uri.get_decoded_path(&mut sb, &mut buffers.0, &mut buffers.1)
     }
+
+    macro_rules! todo_helper !
 
     #[test]
     fn simple_path() {
-        let url = Url {
+        let uri = Uri {
             path_raw: b"/lorem/ipsum/dolor/sit/amet",
             ..Default::default()
         };
         let mut b = prep_buffers();
-        let p = decode_helper(&url, &mut b).unwrap();
+        let p = decode_helper(&uri, &mut b).unwrap();
         assert_eq!(p.parts, b"loremipsumdolorsitamet");
         assert_eq!(p.lengths, &[5, 5, 5, 3, 4]);
     }
 
     #[test]
     fn excessive_slashes() {
-        let url = Url {
+        let uri = Uri {
             path_raw: b"//////hello/////world///////",
             ..Default::default()
         };
         let mut b = prep_buffers();
-        let p = decode_helper(&url, &mut b).unwrap();
+        let p = decode_helper(&uri, &mut b).unwrap();
         assert_eq!(p.parts, b"helloworld");
         assert_eq!(p.lengths, &[5, 5]);
     }
 
     #[test]
     fn normalize_path() {
-        let url = Url {
+        let uri = Uri {
             path_raw: b"/lorem/ipsum/../../jolly/cooperation",
             ..Default::default()
         };
         let mut b = prep_buffers();
-        let p = decode_helper(&url, &mut b).unwrap();
+        let p = decode_helper(&uri, &mut b).unwrap();
         assert_eq!(p.parts, b"jollycooperation");
         assert_eq!(p.lengths, &[5, 11]);
     }
 
     #[test]
     fn normalize_path_edge_case() {
-        let url = Url {
+        let uri = Uri {
             path_raw: b"////silly/../..////../../hi",
             ..Default::default()
         };
         let mut b = prep_buffers();
-        let p = decode_helper(&url, &mut b).unwrap();
+        let p = decode_helper(&uri, &mut b).unwrap();
         assert_eq!(p.parts, b"hi");
         assert_eq!(p.lengths, &[2]);
     }
 
     #[test]
     fn decode_and_normalize() {
-        let url = Url {
+        let uri = Uri {
             path_raw: b"ab+/ab%20/%25%61%62/%20/%E7%8C%AB",
             ..Default::default()
         };
         let mut b = prep_buffers();
-        let p = decode_helper(&url, &mut b).unwrap();
+        let p = decode_helper(&uri, &mut b).unwrap();
         assert_eq!(p.parts, b"ab ab %ab \xe7\x8c\xab");
         assert_eq!(p.lengths, &[3, 3, 3, 1, 3]);
     }
