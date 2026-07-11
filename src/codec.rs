@@ -16,6 +16,11 @@ pub enum CodecError<'src, 'dest> {
     },
 }
 
+pub struct CodecOk<'arena> {
+    pub decoded: &'arena [u8],
+    pub rest: &'arena mut [u8]
+}
+
 /*
  * uri_unsafe_bytes: safe bytes are only `UriByte::is_uri_unreserved`
  */
@@ -25,7 +30,7 @@ pub fn decode<'src, 'dest>(
     catch_invalid_sequences: bool,
     catch_uri_unsafe_bytes: bool
 )
--> Result<&'dest [u8], CodecError<'src, 'dest>> {
+-> Result<CodecOk<'dest>, CodecError<'src, 'dest>> {
     let mut buffer_too_small = false;
     let mut dest_head = 0usize;
     let mut i = 0;
@@ -77,7 +82,11 @@ pub fn decode<'src, 'dest>(
     if buffer_too_small {
         Err(CodecError::BufferTooSmall(dest_head))
     } else {
-        Ok(&dest_buffer[..dest_head])
+        let (decoded, rest) = dest_buffer.split_at_mut(dest_head);
+        Ok(CodecOk {
+            decoded,
+            rest
+        })
     }
 }
 
