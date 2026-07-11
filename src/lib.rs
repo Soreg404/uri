@@ -47,7 +47,6 @@ pub struct UriAuthorityRaw<'a> {
     pub host_raw: &'a [u8],
     pub port: Option<u16>,
 }
-
 #[derive(Default)]
 pub struct UriRaw<'a> {
     pub scheme: Option<&'a [u8]>,
