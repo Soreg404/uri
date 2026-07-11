@@ -17,6 +17,7 @@ impl Debug for super::Url<'_> {
             match self.get_decoded_path(&mut b1, &mut b2, &mut b3) {
                 Err(()) => Err(()),
                 Ok(v) => {
+                    let v = v.path_parts;
                     let mut ret = Vec::new();
                     for p in v.iter() {
                         ret.push(String::from_utf8_lossy(p).to_string());
@@ -31,9 +32,9 @@ impl Debug for super::Url<'_> {
             .field("host", &self.host_raw.map(helper))
             .field("port", &self.port)
             .field("path_raw", &helper(self.path_raw))
-            .field("path_decoded", &path_parts)
+            .field("[[path decoded]]", &path_parts)
             .field("query_raw", &self.query_raw.map(helper))
-            .field("query_decoded", &"todo")
+            .field("[[query decoded]]", &"todo")
             .field("fragment", &self.fragment_raw.map(helper))
             .finish()
     }

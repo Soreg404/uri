@@ -101,8 +101,10 @@ fn pg_decode() {
                     eprintln!("{e:?}");
                 }
                 Ok(v) => {
+                    v.rest[0] = b'E';
                     print!("Decoded text, from utf8 lossy ");
-                    print_text(v);
+                    print_text(v.decoded);
+                    print_text(v.rest);
                 }
             }
             println!();

@@ -59,13 +59,19 @@ fn test_path_parts_eq() {
     assert!(!test.eq(&[b"it", b"is", b"bananas"]))
 }
 
+pub struct PathPartsRet<'arena> {
+    pub path_parts: PathParts<'arena>,
+    pub decoded_arena_rest: &'arena mut [u8],
+    pub lengths_arena_rest: &'arena mut [usize]
+}
+
 impl<'a> super::Url<'a> {
     pub fn get_decoded_path<'tmp, 'persistent>(
         &'a self,
         single_part_decode_scratch_buffer: &'tmp mut [u8],
         decoded_path_parts_arena: &'persistent mut [u8],
         parts_lengths_arena: &'persistent mut [usize]
-    ) -> Result<PathParts<'persistent>, ()> {
+    ) -> Result<PathPartsRet<'persistent>, ()> {
 
         /*
          * idk about prerformance, maybe better not to loop buffers backwards?
@@ -127,7 +133,7 @@ impl<'a> super::Url<'a> {
                     return Err(());
                 },
                 Err(_) => unreachable!(),
-                Ok(v) => v
+                Ok(v) => v.decoded
             };
 
             if dest_head < c_part.len() {
@@ -144,9 +150,16 @@ impl<'a> super::Url<'a> {
             lengths[lengths.len() - part_counter] = c_part.len();
         }
 
-        Ok(PathParts {
-            parts: &dest[dest_head..],
-            lengths: &lengths[lengths.len() - part_counter..],
+        let (a_decoded_rest, a_decoded_used) = dest.split_at_mut(dest_head);
+        let (a_lengths_rest, a_lengths_used) = lengths.split_at_mut(lengths.len() - part_counter);
+
+        Ok(PathPartsRet {
+            path_parts: PathParts {
+                parts: a_decoded_used,
+                lengths: a_lengths_used,
+            },
+            decoded_arena_rest: a_decoded_rest,
+            lengths_arena_rest: a_lengths_rest
         })
     }
 }
