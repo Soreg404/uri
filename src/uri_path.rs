@@ -61,7 +61,7 @@ fn test_path_parts_eq() {
 
 pub struct PathPartsRet<'arena> {
     pub path_parts: PathParts<'arena>,
-    pub decoded_arena_rest: &'arena mut [u8],
+    pub decode_arena_rest: &'arena mut [u8],
     pub lengths_arena_rest: &'arena mut [usize]
 }
 
@@ -70,7 +70,9 @@ impl PathParts<'_> {
         path_raw: &'a [u8],
         single_part_decode_scratch_buffer: &'tmp mut [u8],
         decoded_path_parts_arena: &'persistent mut [u8],
-        parts_lengths_arena: &'persistent mut [usize]
+        parts_lengths_arena: &'persistent mut [usize],
+        catch_invalid_sequences: bool,
+        catch_uri_unsafe_bytes: bool
     ) -> Result<PathPartsRet<'persistent>, ()> {
 
         /*
@@ -128,13 +130,13 @@ impl PathParts<'_> {
             let c_part = match crate::codec::decode(
                 c_part,
                 single_part_decode_scratch_buffer,
-                false, false
+                catch_invalid_sequences,
+                catch_uri_unsafe_bytes
             ) {
-                Err(crate::codec::CodecError::BufferTooSmall(_l)) => {
-                    // buffer too small - single part too big ({l})
+                Err(_e) => {
+                    // codec error
                     return Err(());
                 },
-                Err(_) => unreachable!(),
                 Ok(v) => v.decoded
             };
 
@@ -152,15 +154,15 @@ impl PathParts<'_> {
             lengths[lengths.len() - part_counter] = c_part.len();
         }
 
-        let (a_decoded_rest, a_decoded_used) = dest.split_at_mut(dest_head);
+        let (a_decode_rest, a_decode_used) = dest.split_at_mut(dest_head);
         let (a_lengths_rest, a_lengths_used) = lengths.split_at_mut(lengths.len() - part_counter);
 
         Ok(PathPartsRet {
             path_parts: PathParts {
-                parts: a_decoded_used,
+                parts: a_decode_used,
                 lengths: a_lengths_used,
             },
-            decoded_arena_rest: a_decoded_rest,
+            decode_arena_rest: a_decode_rest,
             lengths_arena_rest: a_lengths_rest
         })
     }
@@ -169,7 +171,6 @@ impl PathParts<'_> {
 #[cfg(test)]
 mod tests {
     use super::PathParts;
-    use crate::Uri;
 
     fn prep_buffers() -> (Vec<u8>, Vec<usize>) {
         let a1 = { let mut v = Vec::new(); v.resize(1000, 0u8); v };
@@ -180,70 +181,78 @@ mod tests {
         uri: &'a Uri<'a>,
         buffers: &'a mut (Vec<u8>, Vec<usize>)
     ) -> Result<PathParts<'a>, ()> {
-        let mut sb = { let mut v = Vec::new(); v.resize(1000, 0u8); v };
-        uri.get_decoded_path(&mut sb, &mut buffers.0, &mut buffers.1)
     }
 
-    macro_rules! todo_helper !
+    macro_rules! path_parts_eq {
+        ($left:expr, $paths:expr, $lengths:expr) => {{
+            let mut decode_scratch_buffer = { let mut v = Vec::new(); v.resize(100, 0u8); v };
+
+            let mut decode_arena = { let mut v = Vec::new(); v.resize(1000, 0u8); v };
+            let mut lengths_arena = { let mut v = Vec::new(); v.resize(100, 0usize); v };
+            
+            let r = PathParts::parse_decode(
+                $left,
+                &mut decode_scratch_buffer,
+                &mut decode_arena,
+                &mut lengths_arena
+            )
+                .unwrap();
+
+            assert_eq!(r.path_parts.parts, $paths);
+            assert_eq!(r.path_parts.lengths, $lengths);
+            r.decode_arena_rest[0..5] = b"hello";
+            r.lengths_arena_rest[0..1] = [0, 1];
+        }}
+    }
 
     #[test]
     fn simple_path() {
-        let uri = Uri {
-            path_raw: b"/lorem/ipsum/dolor/sit/amet",
-            ..Default::default()
-        };
-        let mut b = prep_buffers();
-        let p = decode_helper(&uri, &mut b).unwrap();
-        assert_eq!(p.parts, b"loremipsumdolorsitamet");
-        assert_eq!(p.lengths, &[5, 5, 5, 3, 4]);
+        path_parts_eq!(
+            b"/lorem/ipsum/dolor/sit/amet",
+            b"loremipsumdolorsitamet",
+            &[5, 5, 5, 3, 4]
+        );
     }
 
     #[test]
     fn excessive_slashes() {
-        let uri = Uri {
-            path_raw: b"//////hello/////world///////",
-            ..Default::default()
-        };
-        let mut b = prep_buffers();
-        let p = decode_helper(&uri, &mut b).unwrap();
-        assert_eq!(p.parts, b"helloworld");
-        assert_eq!(p.lengths, &[5, 5]);
+        path_parts_eq!(
+            b"//////hello/////world///////",
+            b"helloworld",
+            &[5, 5]
+        );
     }
 
     #[test]
     fn normalize_path() {
-        let uri = Uri {
-            path_raw: b"/lorem/ipsum/../../jolly/cooperation",
-            ..Default::default()
-        };
-        let mut b = prep_buffers();
-        let p = decode_helper(&uri, &mut b).unwrap();
-        assert_eq!(p.parts, b"jollycooperation");
-        assert_eq!(p.lengths, &[5, 11]);
+        path_parts_eq!(
+            b"/lorem/ipsum/../../jolly/cooperation",
+            b"jollycooperation",
+            &[5, 11]
+        );
     }
 
     #[test]
     fn normalize_path_edge_case() {
-        let uri = Uri {
-            path_raw: b"////silly/../..////../../hi",
-            ..Default::default()
-        };
-        let mut b = prep_buffers();
-        let p = decode_helper(&uri, &mut b).unwrap();
-        assert_eq!(p.parts, b"hi");
-        assert_eq!(p.lengths, &[2]);
+        path_parts_eq!(
+            b"////silly/../..////../../hi",
+            b"hi",
+            &[2]
+        );
     }
 
     #[test]
     fn decode_and_normalize() {
-        let uri = Uri {
-            path_raw: b"ab+/ab%20/%25%61%62/%20/%E7%8C%AB",
-            ..Default::default()
-        };
-        let mut b = prep_buffers();
-        let p = decode_helper(&uri, &mut b).unwrap();
-        assert_eq!(p.parts, b"ab ab %ab \xe7\x8c\xab");
-        assert_eq!(p.lengths, &[3, 3, 3, 1, 3]);
+        path_parts_eq!(
+            b"ab+/ab%20/%25%61%62/%20/%E7%8C%AB",
+            b"ab ab %ab \xe7\x8c\xab",
+            &[3, 3, 3, 1, 3]
+        );
+    }
+
+    #[test]
+    fn handle_errors() {
+        todo!()
     }
 
 }

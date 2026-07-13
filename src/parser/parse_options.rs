@@ -1,46 +1,46 @@
-use crate::{ Url, UrlCacheable };
-use super::parse::UrlParseState;
+use crate::{Uri, UriCacheable};
+use super::parse::UriParseState;
 
 #[derive(Clone)]
-pub struct UrlParser {
-    starting_state: UrlParseState
+pub struct UriParser {
+    starting_state: UriParseState
 }
-impl Default for UrlParser {
+impl Default for UriParser {
     fn default() -> Self {
         Self {
-            starting_state: UrlParseState::Scheme
+            starting_state: UriParseState::Scheme
         }
     }
 }
-impl UrlParser {
+impl UriParser {
     pub fn expect_absolute_uri() -> Self {
         Self::default()
     }
     pub fn expect_relative_uri() -> Self {
         Self {
-            starting_state: UrlParseState::NoScheme
+            starting_state: UriParseState::NoScheme
         }
     }
     pub fn starts_from_authority() -> Self {
         Self {
-            starting_state: UrlParseState::StartsFromAuthority
+            starting_state: UriParseState::StartsFromAuthority
         }
     }
     pub fn starts_from_path() -> Self {
         Self {
-            starting_state: UrlParseState::StartsFromPath
+            starting_state: UriParseState::StartsFromPath
         }
     }
 
     pub fn allow_bckwards_compatible_something_something(&mut self) { todo!() }
 
-    pub fn parse<'a>(self, bytes: &'a [u8]) -> Result<Url<'a>, &'static str> {
+    pub fn parse<'a>(self, bytes: &'a [u8]) -> Result<Uri<'a>, &'static str> {
         Ok(
             self.parse_cacheable(bytes)?
-            .as_url(bytes)
+            .as_uri(bytes)
         )
     }
-    pub fn parse_cacheable(self, bytes: &[u8]) -> Result<UrlCacheable, &'static str> {
+    pub fn parse_cacheable(self, bytes: &[u8]) -> Result<UriCacheable, &'static str> {
         super::parse::parse(
             bytes,
             self.starting_state
