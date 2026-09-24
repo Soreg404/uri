@@ -1,10 +1,9 @@
 [package]
-name = "url"
+name = "uri"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trace)'] }
+[dev-dependencies]
+enable-ansi = { path = "C:/_/Dev/Rust/Bodge/enable-ansi" }

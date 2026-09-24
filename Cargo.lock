@@ -3,5 +3,12 @@
 version = 4
 
 [[package]]
-name = "url"
+name = "enable-ansi"
 version = "0.1.0"
+
+[[package]]
+name = "uri"
+version = "0.1.0"
+dependencies = [
+ "enable-ansi",
+]
