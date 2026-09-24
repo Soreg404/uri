@@ -3,6 +3,9 @@ use std::io::{ stdout, stdin, Write, BufRead };
 const ARENA_SIZE: usize = 0x100;
 
 fn main() {
+
+    enable_ansi::enable_ansi();
+
     println!("Playground");
     println!("1) parser");
     println!("2) decode");
@@ -51,7 +54,7 @@ fn pg_parser() {
 
             let line_str = line.trim();
 
-            let parsed = match url::UrlParser::default().parse(line_str.as_bytes()) {
+            let parsed = match uri::UrlParser::default().parse(line_str.as_bytes()) {
                 Err(e) => {
                     eprintln!("err: {e:?}");
                     println!();
@@ -90,7 +93,7 @@ fn pg_decode() {
 
             let line_str = line.trim();
 
-            match url::codec::decode(
+            match uri::codec::decode(
                 line_str.as_bytes(),
                 &mut decode_arena,
                 true,
@@ -134,7 +137,7 @@ fn pg_encode() {
 
             let line_str = line.trim();
 
-            match url::codec::encode(
+            match uri::codec::encode(
                 line_str.as_bytes(),
                 &mut encode_arena
             ) {
