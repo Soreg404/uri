@@ -1,5 +1,5 @@
 use super::parse::{parse, UriParseState};
-use crate::{Uri, UriAuthority};
+use crate::{UriVariant, Uri, UriAuthority};
 
 macro_rules! uri_eq {
     ($sample:literal, $expected_uri:expr) => {
@@ -12,6 +12,12 @@ macro_rules! uri_eq {
                 parse(sample, { $starter_state })
                 .unwrap()
                 .as_uri(sample);
+            let test_uri = match test_uri {
+                UriVariant::Opaq(_) => {
+                    todo!("Opaque uri returned")
+                }
+                UriVariant::Hier(v) => v
+            };
 
             let expected_uri: Uri = { $expected_uri };
 
@@ -187,7 +193,7 @@ fn no_scheme_authority() {
         b"//domain.tld:90",
         Uri {
             authority: UriAuthority {
-                host: Some(b"domain.tld"),
+                host: b"domain.tld",
                 port: Some(90),
             },
             ..Default::default()
@@ -200,9 +206,10 @@ fn no_scheme_authority_empty() {
         b"/////empty_auth",
         Uri {
             authority: UriAuthority {
-                host: Some(b""),
-                path: b"///empty_auth",
+                host: b"",
+                port: None
             },
+            path: b"///empty_auth",
             ..Default::default()
         }
     );

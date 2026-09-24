@@ -298,58 +298,62 @@ mod tests {
         #[test]
         fn catch_unsafe_byte() {
             let mut buf = [0u8; 20];
-            let (r, _) = decode(b"123\r45", &mut buf, true, true);
-            assert_eq!(r, Err(CodecError::UnsafeByte {
+            let r = decode(b"123\r45", &mut buf, true, true)
+                .unwrap_err();
+            assert_eq!(r, CodecError::UnsafeByte {
                 decoded: b"123",
                 decode_arena_remainder: &mut buf[3..],
                 error_index: 3,
                 rest: b"45"
-            }));
+            });
 
-            let (r, _) = decode(b"123 45", &mut buf, true, true);
-            assert_eq!(r, Err(CodecError::UnsafeByte {
+            let r = decode(b"123 45", &mut buf, true, true)
+                .unwrap_err();
+            assert_eq!(r, CodecError::UnsafeByte {
                 decoded: b"123",
                 decode_arena_remainder: &mut buf[3..],
                 error_index: 3,
                 rest: b"45"
-            }));
+            });
         }
 
         #[test]
         fn catch_invalid_sequence() {
             let mut buf = [0u8; 20];
             let sample = b"123_%20_%xx_45_%x";
-            let (r, _) = decode(sample, &mut buf, true, true);
-            assert_eq!(r, Err(CodecError::InvalidSequence {
+            let r = decode(sample, &mut buf, true, true)
+                .unwrap_err();
+            assert_eq!(r, CodecError::InvalidSequence {
                 decoded: b"123_ _",
                 decode_arena_remainder: &mut buf[6..],
                 error_index: 8,
                 error_length: 3,
                 rest: &sample[11..]
-            }));
+            });
 
             let sample = &sample[11..];
-            let (r, _) = decode(sample, &mut buf[6..], true, true);
-            assert_eq!(r, Err(CodecError::InvalidSequence {
+            let r = decode(sample, &mut buf[6..], true, true)
+                .unwrap_err();
+            assert_eq!(r, CodecError::InvalidSequence {
                 decoded: b"_45_",
                 decode_arena_remainder: &mut buf[4..],
                 error_index: 4,
                 error_length: 2,
                 rest: &sample[sample.len()..]
-            }));
+            });
         }
 
         #[test]
         fn edge_case_buffer_too_small() {
             assert_eq!(
-                decode(b"1", &mut [], false, false).0,
+                decode(b"1", &mut [], false, false),
                 Err(CodecError::BufferTooSmall(1))
             );
 
             // simple cutoff
             let mut buf = [0u8; 2];
             assert_eq!(
-                decode(b"12345", &mut buf, false, false).0,
+                decode(b"12345", &mut buf, false, false),
                 Err(CodecError::BufferTooSmall(5))
             );
             assert_eq!(buf.as_slice(), b"12");
@@ -359,7 +363,7 @@ mod tests {
         fn edge_case_buffer_too_small_combined_with_other_error() {
             let mut buf = [0u8; 2];
             assert_eq!(
-                decode(b"123%xx45", &mut buf, true, true).0,
+                decode(b"123%xx45", &mut buf, true, true),
                 Err(CodecError::BufferTooSmall(5))
             );
             assert_eq!(buf.as_slice(), b"12");
@@ -367,7 +371,7 @@ mod tests {
 
             let mut buf = [0u8; 2];
             assert_eq!(
-                decode(b"123\r45", &mut buf, true, true).0,
+                decode(b"123\r45", &mut buf, true, true),
                 Err(CodecError::BufferTooSmall(6))
             );
             assert_eq!(buf.as_slice(), b"12");

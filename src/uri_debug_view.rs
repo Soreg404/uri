@@ -1,6 +1,6 @@
 use std::fmt::{ Debug, Formatter, Error };
 
-impl Debug for super::Url<'_> {
+impl Debug for super::Uri<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error>{
         fn helper(s: &[u8]) -> &str {
             str::from_utf8(s)

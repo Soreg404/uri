@@ -172,17 +172,6 @@ impl PathParts<'_> {
 mod tests {
     use super::PathParts;
 
-    fn prep_buffers() -> (Vec<u8>, Vec<usize>) {
-        let a1 = { let mut v = Vec::new(); v.resize(1000, 0u8); v };
-        let a2 = { let mut v = Vec::new(); v.resize(1000, 0usize); v };
-        (a1, a2)
-    }
-    fn decode_helper<'a>(
-        uri: &'a Uri<'a>,
-        buffers: &'a mut (Vec<u8>, Vec<usize>)
-    ) -> Result<PathParts<'a>, ()> {
-    }
-
     macro_rules! path_parts_eq {
         ($left:expr, $paths:expr, $lengths:expr) => {{
             let mut decode_scratch_buffer = { let mut v = Vec::new(); v.resize(100, 0u8); v };

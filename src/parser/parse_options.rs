@@ -1,4 +1,4 @@
-use crate::{Uri, UriCacheable};
+use crate::{UriVariant, Uri, UriCacheable};
 use super::parse::UriParseState;
 
 #[derive(Clone)]
@@ -34,7 +34,7 @@ impl UriParser {
 
     pub fn allow_bckwards_compatible_something_something(&mut self) { todo!() }
 
-    pub fn parse<'a>(self, bytes: &'a [u8]) -> Result<Uri<'a>, &'static str> {
+    pub fn parse<'a>(self, bytes: &'a [u8]) -> Result<UriVariant<'a>, &'static str> {
         Ok(
             self.parse_cacheable(bytes)?
             .as_uri(bytes)
