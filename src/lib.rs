@@ -1,27 +1,19 @@
 #![forbid(unsafe_code)]
+#![warn(clippy::panic)]
 
-macro_rules! trace {
-    ($ctx:expr) => {
-        {
-            if matches!(option_env!("URI_TRACE"), Some(s) if s != "0") {
-                println!("\x1b[36mtrace!\x1b[0m ({}:{:04}) [uri_parse] {}", file!(), line!(), $ctx);
-            }
-        }
-    }
-}
+#[macro_use]
+mod helpers;
 
-mod uri_byte_classes;
-pub use uri_byte_classes::UriByte;
+mod byte_classes;
 
 pub mod codec;
 
 mod parser;
-pub use parser::UriParser;
 
-mod uri_path;
-mod uri_query;
+mod path;
+mod query;
 
-mod uri_debug_view;
+mod debug_view;
 
 #[derive(Default)]
 pub struct UriAuthority<'a> {

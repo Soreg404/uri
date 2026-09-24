@@ -1,4 +1,4 @@
-use crate::uri_byte_classes::UriByte;
+use crate::byte_classes::UriByte;
 
 // todo: BufferTooSmall should just return decoded and rest 
 // instead of calculating space required
@@ -7,16 +7,16 @@ pub enum CodecError<'src, 'dest> {
     BufferTooSmall(usize),
     UnsafeByte {
         decoded: &'dest [u8],
-        decode_arena_remainder: &'dest mut [u8],
-        error_index: usize,
         rest: &'src [u8]
+        error_index: usize,
+        decode_arena_remainder: &'dest mut [u8],
     },
     InvalidSequence {
         decoded: &'dest [u8],
-        decode_arena_remainder: &'dest mut [u8],
+        rest: &'src [u8]
         error_index: usize,
         error_length: usize,
-        rest: &'src [u8]
+        decode_arena_remainder: &'dest mut [u8],
     },
 }
 
@@ -52,9 +52,9 @@ pub fn decode<'src, 'dest>(
                     let (decoded, decode_arena_remainder) = dest_buffer.split_at_mut(dest_head);
                     return Err(CodecError::UnsafeByte {
                         decoded,
-                        decode_arena_remainder,
+                        rest: &bytes[i + 1 ..],
                         error_index: i,
-                        rest: &bytes[i + 1 ..]
+                        decode_arena_remainder,
                     });
                 }
                 i += 1;
@@ -69,10 +69,10 @@ pub fn decode<'src, 'dest>(
                     let (decoded, decode_arena_remainder) = dest_buffer.split_at_mut(dest_head);
                     return Err(CodecError::InvalidSequence {
                         decoded,
-                        decode_arena_remainder,
+                        rest: &bytes[i + len ..],
                         error_index: i,
                         error_length: len,
-                        rest: &bytes[i + len ..]
+                        decode_arena_remainder,
                     });
                 }
                 i += len;
@@ -101,7 +101,7 @@ pub fn decode<'src, 'dest>(
     }
 }
 
-pub fn decode_to_vec<'src, 'dest>(
+pub fn decode_to_vec_append<'src, 'dest>(
     bytes: &'src [u8],
     dest: &'dest mut Vec<u8>,
     catch_invalid_sequences: bool,
@@ -120,9 +120,9 @@ pub fn decode_to_vec<'src, 'dest>(
                 if catch_uri_unsafe_bytes {
                     return Err(CodecError::UnsafeByte {
                         decoded: &dest[dest_start..],
-                        decode_arena_remainder: &mut [],
+                        rest: &bytes[i + 1 ..],
                         error_index: i,
-                        rest: &bytes[i + 1 ..]
+                        decode_arena_remainder: &mut [],
                     });
                 }
                 i += 1;
@@ -136,10 +136,10 @@ pub fn decode_to_vec<'src, 'dest>(
                 if catch_invalid_sequences {
                     return Err(CodecError::InvalidSequence {
                         decoded: &dest[dest_start..],
-                        decode_arena_remainder: &mut [],
+                        rest: &bytes[i + len ..],
                         error_index: i,
                         error_length: len,
-                        rest: &bytes[i + len ..]
+                        decode_arena_remainder: &mut [],
                     });
                 }
                 i += len;
@@ -185,6 +185,7 @@ fn decode_next_byte(src: &[u8]) -> DNBResult {
 
 // todo: handle TooSmallBuffer error
 // todo: -> CodecResult
+/// warning: does not catch buffer overruns yet :)
 pub fn encode<'src, 'dest>(
     bytes: &'src [u8],
     dest_buffer: &'dest mut [u8]
@@ -225,7 +226,7 @@ pub fn encode<'src, 'dest>(
 }
 
 #[expect(unused)]
-pub fn encode_to_vec(bytes: &[u8]) -> Vec<u8> {
+pub fn encode_to_vec_append(bytes: &[u8]) -> Vec<u8> {
     todo!()
 }
 

@@ -1,22 +1,21 @@
-use crate::{UriVariant, Uri, UriCacheable};
-use super::parse::UriParseState;
+use crate::{ UriVariant, Uri, UriOpaque };
+use super::parse::ParseState;
 
-#[derive(Clone)]
-pub struct UriParser {
+pub struct ParseOptions {
     starting_state: UriParseState
 }
-impl Default for UriParser {
+impl Default for ParseOptions {
     fn default() -> Self {
         Self {
             starting_state: UriParseState::Scheme
         }
     }
 }
-impl UriParser {
-    pub fn expect_absolute_uri() -> Self {
+impl ParseOptions {
+    pub fn absolute_uri() -> Self {
         Self::default()
     }
-    pub fn expect_relative_uri() -> Self {
+    pub fn relative_uri() -> Self {
         Self {
             starting_state: UriParseState::NoScheme
         }
@@ -35,15 +34,6 @@ impl UriParser {
     pub fn allow_bckwards_compatible_something_something(&mut self) { todo!() }
 
     pub fn parse<'a>(self, bytes: &'a [u8]) -> Result<UriVariant<'a>, &'static str> {
-        Ok(
-            self.parse_cacheable(bytes)?
-            .as_uri(bytes)
-        )
-    }
-    pub fn parse_cacheable(self, bytes: &[u8]) -> Result<UriCacheable, &'static str> {
-        super::parse::parse(
-            bytes,
-            self.starting_state
-        )
+        todo!()
     }
 }

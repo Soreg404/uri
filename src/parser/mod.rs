@@ -1,7 +1,5 @@
-mod parse;
-#[cfg(test)]
-mod parse_tests;
-
 mod parse_options;
+mod parse;
 
-pub use parse_options::UriParser;
+#[cfg(test)]
+mod tests;
