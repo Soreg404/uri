@@ -54,7 +54,7 @@ fn pg_parser() {
 
             let line_str = line.trim();
 
-            let parsed = match uri::UrlParser::default().parse(line_str.as_bytes()) {
+            let parsed = match uri::parse(line_str.as_bytes()) {
                 Err(e) => {
                     eprintln!("err: {e:?}");
                     println!();
@@ -105,7 +105,7 @@ fn pg_decode() {
                 }
                 Ok(v) => {
                     print!("Decoded text, from utf8 lossy ");
-                    print_text(v);
+                    print_text(v.decoded);
                 }
             }
             println!();

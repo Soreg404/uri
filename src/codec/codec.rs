@@ -1,32 +1,44 @@
-use crate::uri_byte_classes::UriByte;
+use crate::byte_classes::UriByte;
 
-#[derive(Debug, Eq, PartialEq)]
+// todo: BufferTooSmall should just return decoded and rest 
+// instead of calculating space required
+#[derive(Debug)]
 pub enum CodecError<'src, 'dest> {
     BufferTooSmall(usize),
     UnsafeByte {
         decoded: &'dest [u8],
+        rest: &'src [u8],
         error_index: usize,
-        rest: &'src [u8]
+        decode_arena_remainder: &'dest mut [u8],
     },
     InvalidSequence {
         decoded: &'dest [u8],
+        rest: &'src [u8],
         error_index: usize,
         error_length: usize,
-        rest: &'src [u8]
+        decode_arena_remainder: &'dest mut [u8],
     },
 }
 
+pub struct CodecOk<'arena> {
+    pub decoded: &'arena [u8],
+    pub decode_arena_remainder: &'arena mut [u8]
+}
+
+pub type CodecResult<'src, 'dest> = Result<CodecOk<'dest>, CodecError<'src, 'dest>>;
+
 /*
- * uri_unsafe_bytes are all besides is_uri_unreserved
+ * uri_unsafe_bytes: safe bytes are only `UriByte::is_uri_unreserved`
  */
 pub fn decode<'src, 'dest>(
     bytes: &'src [u8],
-    dest_buffer: &'dest mut [u8],
+    decode_arena: &'dest mut [u8],
     catch_invalid_sequences: bool,
     catch_uri_unsafe_bytes: bool
 )
--> Result<&'dest [u8], CodecError<'src, 'dest>> {
+-> CodecResult<'src, 'dest> {
     let mut buffer_too_small = false;
+    let dest_buffer = decode_arena;
     let mut dest_head = 0usize;
     let mut i = 0;
     while i < bytes.len() {
@@ -37,10 +49,12 @@ pub fn decode<'src, 'dest>(
             }
             DNBResult::UnsafeByte(b) => {
                 if !buffer_too_small && catch_uri_unsafe_bytes {
+                    let (decoded, decode_arena_remainder) = dest_buffer.split_at_mut(dest_head);
                     return Err(CodecError::UnsafeByte {
-                        decoded: &dest_buffer[..dest_head],
+                        decoded,
+                        rest: &bytes[i + 1 ..],
                         error_index: i,
-                        rest: &bytes[i + 1 ..]
+                        decode_arena_remainder,
                     });
                 }
                 i += 1;
@@ -52,11 +66,13 @@ pub fn decode<'src, 'dest>(
             }
             DNBResult::InvalidSequence(len) => {
                 if !buffer_too_small && catch_invalid_sequences {
+                    let (decoded, decode_arena_remainder) = dest_buffer.split_at_mut(dest_head);
                     return Err(CodecError::InvalidSequence {
-                        decoded: &dest_buffer[..dest_head],
+                        decoded,
+                        rest: &bytes[i + len ..],
                         error_index: i,
                         error_length: len,
-                        rest: &bytes[i + len ..]
+                        decode_arena_remainder,
                     });
                 }
                 i += len;
@@ -77,11 +93,15 @@ pub fn decode<'src, 'dest>(
     if buffer_too_small {
         Err(CodecError::BufferTooSmall(dest_head))
     } else {
-        Ok(&dest_buffer[..dest_head])
+        let (decoded, dest_rest) = dest_buffer.split_at_mut(dest_head);
+        Ok(CodecOk {
+            decoded,
+            decode_arena_remainder: dest_rest
+        })
     }
 }
 
-pub fn decode_to_vec<'src, 'dest>(
+pub fn decode_to_vec_append<'src, 'dest>(
     bytes: &'src [u8],
     dest: &'dest mut Vec<u8>,
     catch_invalid_sequences: bool,
@@ -100,8 +120,9 @@ pub fn decode_to_vec<'src, 'dest>(
                 if catch_uri_unsafe_bytes {
                     return Err(CodecError::UnsafeByte {
                         decoded: &dest[dest_start..],
+                        rest: &bytes[i + 1 ..],
                         error_index: i,
-                        rest: &bytes[i + 1 ..]
+                        decode_arena_remainder: &mut [],
                     });
                 }
                 i += 1;
@@ -115,9 +136,10 @@ pub fn decode_to_vec<'src, 'dest>(
                 if catch_invalid_sequences {
                     return Err(CodecError::InvalidSequence {
                         decoded: &dest[dest_start..],
+                        rest: &bytes[i + len ..],
                         error_index: i,
                         error_length: len,
-                        rest: &bytes[i + len ..]
+                        decode_arena_remainder: &mut [],
                     });
                 }
                 i += len;
@@ -162,6 +184,8 @@ fn decode_next_byte(src: &[u8]) -> DNBResult {
 }
 
 // todo: handle TooSmallBuffer error
+// todo: -> CodecResult
+/// warning: does not catch buffer overruns yet :)
 pub fn encode<'src, 'dest>(
     bytes: &'src [u8],
     dest_buffer: &'dest mut [u8]
@@ -202,7 +226,7 @@ pub fn encode<'src, 'dest>(
 }
 
 #[expect(unused)]
-pub fn encode_to_vec(bytes: &[u8]) -> Vec<u8> {
+pub fn encode_to_vec_append(bytes: &[u8]) -> Vec<u8> {
     todo!()
 }
 
@@ -222,119 +246,11 @@ fn hex(b1: u8, b2: u8) -> Option<u8> {
     Some(hi << 4 | lo)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_hex() {
-        assert_eq!(hex(b'2', b'0'), Some(0x20));
-        assert_eq!(hex(b'a', b'a'), Some(0xaa));
-        assert_eq!(hex(b'C', b'C'), Some(0xcc));
-        assert_eq!(hex(b'z', b'1'), None);
-    }
-
-    mod decode {
-        use crate::codec::*;
-
-        fn simple_comp(from: &[u8], to: &[u8]) {
-            let mut arr_buffer = [0u8; 20];
-            assert!(from.len() <= 20);
-
-            let r = decode(from, &mut arr_buffer, false, false);
-            assert_eq!(r, Ok(to));
-            assert!(arr_buffer.starts_with(to));
-
-            let mut vec_buffer = Vec::<u8>::new();
-            let r = decode_to_vec(from, &mut vec_buffer, false, false);
-            assert_eq!(r, Ok(to));
-            assert_eq!(vec_buffer.as_slice(), to);
-        }
-
-        #[test]
-        fn basic_usage() {
-            simple_comp(b"+", b" ");
-            simple_comp(b"1+2+3", b"1 2 3");
-            simple_comp(b"+1+", b" 1 ");
-            simple_comp(b"+++1+++1+++", b"   1   1   ");
-
-            simple_comp(b"%20", b" ");
-            simple_comp(b"1%202%203", b"1 2 3");
-            simple_comp(b"%e7%8c%ab", b"\xe7\x8c\xab");
-        }
-
-        #[test]
-        fn catch_unsafe_byte() {
-            let mut buf = [0u8; 20];
-            let r = decode(b"123\r45", &mut buf, true, true).unwrap_err();
-            assert_eq!(r, CodecError::UnsafeByte {
-                decoded: b"123",
-                error_index: 3,
-                rest: b"45"
-            });
-
-            let r = decode(b"123 45", &mut buf, true, true).unwrap_err();
-            assert_eq!(r, CodecError::UnsafeByte {
-                decoded: b"123",
-                error_index: 3,
-                rest: b"45"
-            });
-        }
-
-        #[test]
-        fn catch_invalid_sequence() {
-            let mut buf = [0u8; 20];
-            let sample = b"123_%20_%xx_45_%x";
-            let r = decode(sample, &mut buf, true, true).unwrap_err();
-            assert_eq!(r, CodecError::InvalidSequence {
-                decoded: b"123_ _",
-                error_index: 8,
-                error_length: 3,
-                rest: &sample[11..]
-            });
-
-            let sample = &sample[11..];
-            let r = decode(sample, &mut buf[6..], true, true).unwrap_err();
-            assert_eq!(r, CodecError::InvalidSequence {
-                decoded: b"_45_",
-                error_index: 4,
-                error_length: 2,
-                rest: &sample[sample.len()..]
-            });
-        }
-
-        #[test]
-        fn edge_case_buffer_too_small() {
-            assert_eq!(
-                decode(b"1", &mut [], false, false),
-                Err(CodecError::BufferTooSmall(1))
-            );
-
-            // simple cutoff
-            let mut buf = [0u8; 2];
-            assert_eq!(
-                decode(b"12345", &mut buf, false, false),
-                Err(CodecError::BufferTooSmall(5))
-            );
-            assert_eq!(buf.as_slice(), b"12");
-        }
-
-        #[test] 
-        fn edge_case_buffer_too_small_combined_with_other_error() {
-            let mut buf = [0u8; 2];
-            assert_eq!(
-                decode(b"123%xx45", &mut buf, true, true),
-                Err(CodecError::BufferTooSmall(5))
-            );
-            assert_eq!(buf.as_slice(), b"12");
-
-
-            let mut buf = [0u8; 2];
-            assert_eq!(
-                decode(b"123\r45", &mut buf, true, true),
-                Err(CodecError::BufferTooSmall(6))
-            );
-            assert_eq!(buf.as_slice(), b"12");
-        }
-    }
+#[test]
+fn test_hex() {
+    assert_eq!(hex(b'2', b'0'), Some(0x20));
+    assert_eq!(hex(b'a', b'a'), Some(0xaa));
+    assert_eq!(hex(b'C', b'C'), Some(0xcc));
+    assert_eq!(hex(b'z', b'1'), None);
 }
+

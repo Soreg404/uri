@@ -1,7 +1,5 @@
-mod parse;
+pub mod parse;
+pub mod parse_options;
+
 #[cfg(test)]
-mod parse_tests;
-
-mod parse_options;
-
-pub use parse_options::UrlParser;
+mod tests;

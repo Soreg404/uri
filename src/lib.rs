@@ -1,69 +1,51 @@
-#![forbid(unsafe_code)]
+#![deny(warnings)]
+#![warn(unsafe_code)]
+#![warn(clippy::panic)]
 
-// todo: fix name inconsistencies: Ur(l) / Ur(i)
+#[macro_use]
+mod helpers;
 
-macro_rules! trace {
-    ($ctx:expr) => {
-        {
-            if matches!(option_env!("URI_TRACE"), Some(s) if s != "0") {
-                println!("\x1b[36mtrace!\x1b[0m ({}:{:04}) [uri_parse] {}", file!(), line!(), $ctx);
-            }
-        }
-    }
-}
-
-mod uri_byte_classes;
-pub use uri_byte_classes::UriByte;
-
-mod parser;
-pub use parser::UrlParser;
+mod byte_classes;
 
 pub mod codec;
 
-#[derive(Debug, Default, Eq, PartialEq)]
-struct FromTo {
-    pub from: usize,
-    pub to: usize
-}
-#[derive(Debug, Default, Eq, PartialEq)]
-pub struct UrlCacheable {
-    scheme: Option<FromTo>,
-    host: Option<FromTo>,
-    port: Option<u16>,
-    path: FromTo,
-    query: Option<FromTo>,
-    fragment: Option<FromTo>
-}
-impl UrlCacheable {
-    pub fn as_url<'a, 'b>(&'a self, original_bytes: &'b [u8]) -> Url<'b> {
-        let b = original_bytes;
-        Url {
-            scheme: self.scheme.as_ref().map(|v| &b[v.from..v.to]),
-            host_raw: self.host.as_ref().map(|v| &b[v.from..v.to]),
-            port: self.port,
-            path_raw: &b[self.path.from..self.path.to],
-            query_raw: self.query.as_ref().map(|v| &b[v.from..v.to]),
-            fragment_raw: self.fragment.as_ref().map(|v| &b[v.from..v.to]),
-        }
-    }
-}
+mod parser;
+pub use parser::parse_options::{
+    ParseOptions,
+    parse,
+};
 
-#[derive(Default)]
-pub struct Url<'a> {
+mod path;
+pub use path::path_parts;
+
+mod query;
+
+mod debug_view;
+
+// todo: bring back UriCacheable somehow (core::range preferably)
+
+pub struct Uri<'a> {
     pub scheme: Option<&'a [u8]>,
-    pub host_raw: Option<&'a [u8]>,
+    pub authority: Option<UriAuthority<'a>>,
+    pub path: &'a [u8],
+    pub query: Option<&'a [u8]>,
+    pub fragment: Option<&'a [u8]>
+}
+pub struct UriAuthority<'a> {
+    pub host: &'a [u8],
     pub port: Option<u16>,
-    pub path_raw: &'a [u8],
-    pub query_raw: Option<&'a [u8]>,
-    pub fragment_raw: Option<&'a [u8]>
-}
-impl Url<'_> {
-    pub fn is_abs_path(&self) -> bool {
-        self.path_raw.starts_with(b"/")
-    }
 }
 
-mod uri_debug_view;
+pub struct UriOpaque<'a> {
+    pub scheme: &'a [u8],
+    pub path: &'a [u8],
+    // todo: add query
+    pub fragment: Option<&'a [u8]>
+}
 
-// todo: url_path? uri_path? change later
-mod url_path;
+#[derive(Debug)]
+pub enum UriVariant<'a> {
+    Hier(Uri<'a>),
+    Opaq(UriOpaque<'a>)
+}
+
