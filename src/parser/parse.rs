@@ -6,8 +6,7 @@
  */
 
 // todo: maybe change to flow resolver instead of stateful
-
-use crate::{ FromTo, UriCacheable, UriByte };
+// todo: maybe return "Cacheable" or "Ranged" URI
 
 #[derive(Debug)]
 pub enum ParseState {
@@ -25,18 +24,19 @@ pub enum ParseState {
     OpaqueFragment,
 }
 
-
 pub fn parse(
     bytes: &[u8],
     starting_state: ParseState
-) -> Result<UriCacheable, &'static str> {
-    trace!("parse begin");
+) -> Result<UriVariant, &'static str> {
+    trace!(format!("parse begin; bytes: <<<{}>>>", String::from_utf8_lossy(bytes)));
 
     let mut state = starting_state;
     let mut word_start = 0usize;
     let mut i = 0usize;
 
-    /// todo: avoid this ugly excessive invariance
+    /*
+     * todo: avoid this ugly excessive invariance
+     */
     let mut scheme = None::<&[u8]>;
     let mut host = None::<&[u8]>;
     let mut port = None::<u16>;
@@ -141,7 +141,7 @@ pub fn parse(
                             }
                             _ => {
                                 trace!("opaque_part: -> done!");
-                                break Ok(todo!("return ok"))
+                                todo!("return ok")
                             }
                         }
                     }
@@ -247,7 +247,7 @@ pub fn parse(
                         match bytes.get(i) {
                             None => {
                                 trace!("path: eot -> done!");
-                                break Ok(todo!("return ok"))
+                                todo!("return ok")
                             }
                             Some(b'?') => {
                                 trace!("path: -> query:");
@@ -282,7 +282,7 @@ pub fn parse(
                         match bytes.get(i) {
                             None => {
                                 trace!("query: eot -> done!");
-                                break Ok(todo!("return ok"))
+                                todo!("return ok")
                             }
                             Some(b'#') => {
                                 trace!("query: -> fragment:");
@@ -309,8 +309,8 @@ pub fn parse(
                         trace!(format!("fragment: fragment is <<<{}>>> -> done!",
                                 String::from_utf8_lossy(frag)));
                         match state {
-                            ParseState::Fragment => break Ok(todo!("return ok")),
-                            ParseState::OpaqueFragment => break Ok(todo!("return ok")),
+                            ParseState::Fragment => todo!("return ok"),
+                            ParseState::OpaqueFragment => todo!("return ok"),
                             _ => unreachable!()
                         }
                     }
