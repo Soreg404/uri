@@ -2,6 +2,7 @@ use std::fmt::{ Debug, Formatter, Error };
 
 impl Debug for super::Uri<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error>{
+        /// tf is this
         fn helper(s: &[u8]) -> &str {
             str::from_utf8(s)
                 .expect("URI Parser is supposed to allow only ASCII characters")
