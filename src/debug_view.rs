@@ -2,12 +2,8 @@ use std::fmt::{ Debug, Formatter, Error };
 
 impl Debug for super::Uri<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error>{
-        /// tf is this
-        fn helper(s: &[u8]) -> &str {
-            str::from_utf8(s)
-                .expect("URI Parser is supposed to allow only ASCII characters")
-        }
-
+        /*
+         * todo: later: decoding path parts
         let mut b1 = Vec::new();
         b1.resize(1000, 0u8);
         let mut b2 = Vec::new();
@@ -27,17 +23,44 @@ impl Debug for super::Uri<'_> {
                 }
             }
         };
+         *
+         */
 
         f.debug_struct("Uri")
-            .field("scheme", &self.scheme.map(helper))
-            .field("host", &self.host_raw.map(helper))
-            .field("port", &self.port)
-            .field("path_raw", &helper(self.path_raw))
-            .field("[[path decoded]]", &path_parts)
-            .field("query_raw", &self.query_raw.map(helper))
-            .field("[[query decoded]]", &"todo")
-            .field("fragment", &self.fragment_raw.map(helper))
+            .field("scheme", &self.scheme.map(String::from_utf8_lossy))
+            .field("authority", &self.authority)
+            .field("path", &String::from_utf8_lossy(self.path))
+            // todo:
+            //.field("[[path decoded]]", &path_parts)
+            .field("query", &self.query.map(String::from_utf8_lossy))
+            // todo:
+            //.field("[[query decoded]]", &"todo")
+            .field("fragment", &self.fragment.map(String::from_utf8_lossy))
             .finish()
     }
 }
 
+impl Debug for super::UriAuthority<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error>{
+        f.debug_struct("Authority")
+            .field("host", &String::from_utf8_lossy(&self.host))
+            .field("port", &self.port)
+            .finish()
+    }
+}
+
+impl Debug for super::UriOpaque<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error>{
+        f.debug_struct("UriOpaque")
+            .field("scheme", &String::from_utf8_lossy(&self.scheme))
+            .field("path", &String::from_utf8_lossy(self.path))
+            // todo:
+            //.field("[[path decoded]]", &path_parts)
+            // todo:
+            //.field("query", &self.query.map(String::from_utf8_lossy))
+            // todo:
+            //.field("[[query decoded]]", &"todo")
+            .field("fragment", &self.fragment.map(String::from_utf8_lossy))
+            .finish()
+    }
+}

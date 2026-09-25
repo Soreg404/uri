@@ -3,7 +3,12 @@
  * BNF described in [RFC2396](https://datatracker.ietf.org/doc/html/rfc2396)
  *
  * logic described in uri_parser_state_description.txt
+ *
+ * todo: update or delete these docs
  */
+
+use crate::byte_classes::UriByte;
+use crate::{UriVariant, Uri, UriAuthority, UriOpaque};
 
 // todo: maybe change to flow resolver instead of stateful
 // todo: maybe return "Cacheable" or "Ranged" URI
@@ -24,10 +29,10 @@ pub enum ParseState {
     OpaqueFragment,
 }
 
-pub fn parse(
-    bytes: &[u8],
+pub fn parse<'src>(
+    bytes: &'src [u8],
     starting_state: ParseState
-) -> Result<UriVariant, &'static str> {
+) -> Result<UriVariant<'src>, &'static str> {
     trace!(format!("parse begin; bytes: <<<{}>>>", String::from_utf8_lossy(bytes)));
 
     let mut state = starting_state;
@@ -36,14 +41,15 @@ pub fn parse(
 
     /*
      * todo: avoid this ugly excessive invariance
+     * /expect("invariant")
      */
     let mut scheme = None::<&[u8]>;
-    let mut host = None::<&[u8]>;
-    let mut port = None::<u16>;
-    let mut path = &[];
+    let mut authority = None::<UriAuthority>;
+    let mut path: &[u8] = &[];
     let mut query = None::<&[u8]>;
+    let mut fragment = None::<&[u8]>;
 
-    let mut invalid_scheme_flag = false;
+    //let mut invalid_scheme_flag = false;
 
     let mut debug_loop_terminator = 0;
     let ret = loop {
@@ -52,7 +58,7 @@ pub fn parse(
             panic!("loop terminated at bytes.len() * 2 + 10");
         }
 
-        trace!(debug_print_current_state(&state, &bytes));
+        trace!(debug_print_current_state(&state, &bytes[i..]));
 
         state = match state {
             ParseState::Scheme => {
@@ -62,7 +68,7 @@ pub fn parse(
                         ParseState::NoScheme
                     }
                     Some(c) => {
-                        if !c.is_uric() && c != b'#' {
+                        if !c.is_uric() && *c != b'#' {
                             trace!("scheme: c is not uric -> error!");
                             break Err("illegal byte");
                         }
@@ -80,7 +86,10 @@ pub fn parse(
                             }
                             c => {
                                 if !c.is_uri_scheme_allowed(i == 0) {
-                                    /// todo: should fail if scheme is expected
+                                    /*
+                                     * todo: should fail if scheme is expected
+                                     *       refer: super::ParseOptions::auto()
+                                     */
                                     trace!("scheme: not uri allowe char -> no_scheme:");
                                     ParseState::NoScheme
                                 } else {
@@ -122,7 +131,7 @@ pub fn parse(
                         trace!("has_scheme: starts with uric -> opaque_part:");
                         word_start = i;
                         i += 1;
-                        ParseState::OpaquePart
+                        ParseState::Opaque
                     }
                 }
             }
@@ -141,7 +150,11 @@ pub fn parse(
                             }
                             _ => {
                                 trace!("opaque_part: -> done!");
-                                todo!("return ok")
+                                return Ok(UriVariant::Opaq(UriOpaque {
+                                    scheme: scheme.expect("invariant"),
+                                    path,
+                                    fragment: None,
+                                }))
                             }
                         }
                     }
@@ -185,7 +198,10 @@ pub fn parse(
                         }
                         trace!(format!("authority: host is <<<{}>>>",
                                 String::from_utf8_lossy(&bytes[word_start..i])));
-                        host = Some(&bytes[word_start..i]);
+                        authority = Some(UriAuthority {
+                            host: &bytes[word_start..i],
+                            port: None,
+                        });
                         if let Some(b':') = bytes.get(i) {
                             trace!("authority: -> port:");
                             i += 1;
@@ -207,9 +223,10 @@ pub fn parse(
                 }
             }
             ParseState::Port => {
+                let port = &mut authority.as_mut().expect("invariant").port;
                 match bytes.get(i) {
                     None | Some(b'/' | b'?' | b'#') => {
-                        match port {
+                        match *port {
                             None => {
                                 trace!("port: eot, empty port -> error!");
                                 break Err("empty port")
@@ -227,7 +244,7 @@ pub fn parse(
                             break Err("invalid uri: non-digit in port");
                         }
                         let c = c - b'0';
-                        port = Some(port.unwrap_or(0) * 10 + c as u16);
+                        *port = Some(port.unwrap_or(0) * 10 + c as u16);
                         i += 1;
                         ParseState::Port
                     }
@@ -247,7 +264,13 @@ pub fn parse(
                         match bytes.get(i) {
                             None => {
                                 trace!("path: eot -> done!");
-                                todo!("return ok")
+                                return Ok(UriVariant::Hier(Uri {
+                                    scheme,
+                                    authority,
+                                    path,
+                                    query,
+                                    fragment,
+                                }))
                             }
                             Some(b'?') => {
                                 trace!("path: -> query:");
@@ -261,6 +284,7 @@ pub fn parse(
                                 word_start = i;
                                 ParseState::Fragment
                             }
+                            _ => unreachable!()
                         }
                     }
                     Some(c) => {
@@ -273,6 +297,7 @@ pub fn parse(
                     }
                 }
             }
+            // todo: add query for UriOpaque
             ParseState::Query => {
                 match bytes.get(i) {
                     None | Some(b'#') => {
@@ -282,7 +307,13 @@ pub fn parse(
                         match bytes.get(i) {
                             None => {
                                 trace!("query: eot -> done!");
-                                todo!("return ok")
+                                return Ok(UriVariant::Hier(Uri {
+                                    scheme,
+                                    authority,
+                                    path,
+                                    query,
+                                    fragment,
+                                }))
                             }
                             Some(b'#') => {
                                 trace!("query: -> fragment:");
@@ -290,6 +321,7 @@ pub fn parse(
                                 word_start = i;
                                 ParseState::Fragment
                             }
+                            _ => unreachable!()
                         }
                     }
                     Some(c) => {
@@ -305,12 +337,24 @@ pub fn parse(
             ParseState::Fragment | ParseState::OpaqueFragment => {
                 match bytes.get(i) {
                     None => {
-                        let frag = &bytes[word_start..i];
                         trace!(format!("fragment: fragment is <<<{}>>> -> done!",
-                                String::from_utf8_lossy(frag)));
+                                String::from_utf8_lossy(&bytes[word_start..i])));
+                        fragment = Some(&bytes[word_start..i]);
                         match state {
-                            ParseState::Fragment => todo!("return ok"),
-                            ParseState::OpaqueFragment => todo!("return ok"),
+                            ParseState::Fragment =>
+                                return Ok(UriVariant::Hier(Uri {
+                                    scheme,
+                                    authority,
+                                    path,
+                                    query,
+                                    fragment,
+                                })),
+                            ParseState::OpaqueFragment =>
+                                return Ok(UriVariant::Opaq(UriOpaque {
+                                    scheme: scheme.expect("invariant"),
+                                    path: path,
+                                    fragment,
+                                })),
                             _ => unreachable!()
                         }
                     }
@@ -339,7 +383,9 @@ fn debug_print_current_state(state: &ParseState, bytes: &[u8]) -> String {
             (String::from_utf8_lossy(bytes), "".to_string())
         }
     };
-    format!("\x1b[90mparse loop; state={: <15};
-        bytes <<<{bytes_str}>>>{bytes_more_str}\x1b[0m",
-        format!("{:?},", state))
+    format!(
+    "\x1b[90m\
+    parse loop; state={state:?};\n\
+    bytes <<<{bytes_str}>>>{bytes_more_str}\
+    \x1b[0m")
 }

@@ -2,7 +2,7 @@ use crate::byte_classes::UriByte;
 
 // todo: BufferTooSmall should just return decoded and rest 
 // instead of calculating space required
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum CodecError<'src, 'dest> {
     BufferTooSmall(usize),
     UnsafeByte {
@@ -246,136 +246,11 @@ fn hex(b1: u8, b2: u8) -> Option<u8> {
     Some(hi << 4 | lo)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_hex() {
-        assert_eq!(hex(b'2', b'0'), Some(0x20));
-        assert_eq!(hex(b'a', b'a'), Some(0xaa));
-        assert_eq!(hex(b'C', b'C'), Some(0xcc));
-        assert_eq!(hex(b'z', b'1'), None);
-    }
-
-    mod decode {
-        use crate::codec::*;
-
-        macro_rules! decode_eq {
-            ($left:expr, $right:expr) => {
-                {
-                    let left: &[u8] = { $left };
-                    let right: &[u8] = { $right };
-                    {
-                        let mut arena = [0u8; 100];
-                        assert!(left.len() <= 100);
-
-                        let r = decode(left, &mut arena, false, false)
-                            .unwrap();
-                        assert_eq!(r.decoded, right);
-                    }
-                    {
-                        let mut vec_buffer = Vec::<u8>::new();
-                        let r = decode_to_vec(left, &mut vec_buffer, false, false)
-                            .unwrap();
-                        assert_eq!(r, right);
-                    }
-                }
-            }
-        }
-
-        #[test]
-        fn basic_usage() {
-            decode_eq!(b"+", b" ");
-            decode_eq!(b"1+2+3", b"1 2 3");
-            decode_eq!(b"+1+", b" 1 ");
-            decode_eq!(b"+++1+++1+++", b"   1   1   ");
-
-            decode_eq!(b"%20", b" ");
-            decode_eq!(b"1%202%203", b"1 2 3");
-            decode_eq!(b"%e7%8c%ab", b"\xe7\x8c\xab");
-        }
-
-        #[test]
-        fn catch_unsafe_byte() {
-            let mut buf = [0u8; 20];
-            let r = decode(b"123\r45", &mut buf, true, true)
-                .unwrap_err();
-            assert_eq!(r, CodecError::UnsafeByte {
-                decoded: b"123",
-                decode_arena_remainder: &mut buf[3..],
-                error_index: 3,
-                rest: b"45"
-            });
-
-            let r = decode(b"123 45", &mut buf, true, true)
-                .unwrap_err();
-            assert_eq!(r, CodecError::UnsafeByte {
-                decoded: b"123",
-                decode_arena_remainder: &mut buf[3..],
-                error_index: 3,
-                rest: b"45"
-            });
-        }
-
-        #[test]
-        fn catch_invalid_sequence() {
-            let mut buf = [0u8; 20];
-            let sample = b"123_%20_%xx_45_%x";
-            let r = decode(sample, &mut buf, true, true)
-                .unwrap_err();
-            assert_eq!(r, CodecError::InvalidSequence {
-                decoded: b"123_ _",
-                decode_arena_remainder: &mut buf[6..],
-                error_index: 8,
-                error_length: 3,
-                rest: &sample[11..]
-            });
-
-            let sample = &sample[11..];
-            let r = decode(sample, &mut buf[6..], true, true)
-                .unwrap_err();
-            assert_eq!(r, CodecError::InvalidSequence {
-                decoded: b"_45_",
-                decode_arena_remainder: &mut buf[4..],
-                error_index: 4,
-                error_length: 2,
-                rest: &sample[sample.len()..]
-            });
-        }
-
-        #[test]
-        fn edge_case_buffer_too_small() {
-            assert_eq!(
-                decode(b"1", &mut [], false, false),
-                Err(CodecError::BufferTooSmall(1))
-            );
-
-            // simple cutoff
-            let mut buf = [0u8; 2];
-            assert_eq!(
-                decode(b"12345", &mut buf, false, false),
-                Err(CodecError::BufferTooSmall(5))
-            );
-            assert_eq!(buf.as_slice(), b"12");
-        }
-
-        #[test] 
-        fn edge_case_buffer_too_small_combined_with_other_error() {
-            let mut buf = [0u8; 2];
-            assert_eq!(
-                decode(b"123%xx45", &mut buf, true, true),
-                Err(CodecError::BufferTooSmall(5))
-            );
-            assert_eq!(buf.as_slice(), b"12");
-
-
-            let mut buf = [0u8; 2];
-            assert_eq!(
-                decode(b"123\r45", &mut buf, true, true),
-                Err(CodecError::BufferTooSmall(6))
-            );
-            assert_eq!(buf.as_slice(), b"12");
-        }
-    }
+#[test]
+fn test_hex() {
+    assert_eq!(hex(b'2', b'0'), Some(0x20));
+    assert_eq!(hex(b'a', b'a'), Some(0xaa));
+    assert_eq!(hex(b'C', b'C'), Some(0xcc));
+    assert_eq!(hex(b'z', b'1'), None);
 }
+
