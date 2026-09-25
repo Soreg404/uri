@@ -15,12 +15,6 @@ mod query;
 
 mod debug_view;
 
-#[derive(Default)]
-pub struct UriAuthority<'a> {
-    pub host: &'a [u8],
-    pub port: Option<u16>,
-}
-#[derive(Default)]
 pub struct Uri<'a> {
     pub scheme: Option<&'a [u8]>,
     pub authority: Option<UriAuthority<'a>>,
@@ -28,8 +22,11 @@ pub struct Uri<'a> {
     pub query: Option<&'a [u8]>,
     pub fragment: Option<&'a [u8]>
 }
+pub struct UriAuthority<'a> {
+    pub host: &'a [u8],
+    pub port: Option<u16>,
+}
 
-#[derive(Default)]
 pub struct UriOpaque<'a> {
     pub scheme: &'a [u8],
     pub path: &'a [u8],

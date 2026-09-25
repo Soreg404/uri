@@ -7,13 +7,13 @@ pub enum CodecError<'src, 'dest> {
     BufferTooSmall(usize),
     UnsafeByte {
         decoded: &'dest [u8],
-        rest: &'src [u8]
+        rest: &'src [u8],
         error_index: usize,
         decode_arena_remainder: &'dest mut [u8],
     },
     InvalidSequence {
         decoded: &'dest [u8],
-        rest: &'src [u8]
+        rest: &'src [u8],
         error_index: usize,
         error_length: usize,
         decode_arena_remainder: &'dest mut [u8],
