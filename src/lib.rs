@@ -1,6 +1,6 @@
 #![deny(warnings)]
-#![warn(unsafe_code)]
-#![warn(clippy::panic)]
+#![deny(unsafe_code)]
+#![deny(clippy::panic)]
 
 #[macro_use]
 mod helpers;
