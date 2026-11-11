@@ -4,11 +4,13 @@ version = 4
 
 [[package]]
 name = "enable-ansi"
-version = "0.1.0"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b28104c968412945f55fb0fe6708b497bc5292df197c6e08288856b12211260"
 
 [[package]]
 name = "uri"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "enable-ansi",
 ]

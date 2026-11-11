@@ -1,12 +1,11 @@
 [package]
 name = "uri"
-version = "0.1.0"
+version = "1.0.1"
 edition = "2024"
 
 [features]
 debug-trace = []
 
-[dependencies]
-
 [dev-dependencies]
-enable-ansi = { path = "C:/_/Dev/Rust/Bodge/enable-ansi" }
+enable-ansi = "0.2.8"
+
